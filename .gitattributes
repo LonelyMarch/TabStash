@@ -1,0 +1,7 @@
+# 统一跨平台检出的文本换行符，避免 Windows 构建环境触发 Biome 格式误报。
+* text=auto eol=lf
+
+# 图片、字体和测试媒体按二进制保存，避免换行转换。
+*.png binary
+*.woff2 binary
+*.webm binary
