@@ -1,15 +1,26 @@
 # 更新日志
 
-本文件记录 TabStash 的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。当前项目版本为 `0.1.0`；首次发布时，将下方条目移至带发布日期的版本小节。
+本项目的用户可见变化记录在此文件中，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
 ## [Unreleased]
 
-### 新增
+## [0.1.0] - 2026-09-26
 
+### Added
+
+- 首次公开 TabStash 源码，采用 AGPL-3.0-only 许可证。
 - 在 Edge 和 Chrome 侧栏中查看普通窗口、标签组和标签页，并支持切换窗口及激活标签。
 - 手动归档窗口、归档后关闭窗口，以及按设置自动归档关闭的窗口。
 - 恢复归档中的标签顺序、固定状态、标签组、活动标签和窗口状态；完整恢复后可移除原归档。
 - 管理本地归档，包括置顶、取消置顶和删除。
 - 尽力记录并恢复普通网页的滚动位置和原生音视频播放时间。
 - 提供自动、亮色和暗色外观，以及侧栏键盘导航。
-- 提供 Edge 与 Chrome 的 ZIP 构建、产物检查和 GitHub Actions 验证流程。
+
+### Changed
+
+- 发布流程统一生成 Edge 与 Chrome 的 ZIP 包，并提供 SHA-256 校验和。
+
+### Fixed
+
+- 修正浅色侧栏中浏览器内置页图标颜色错误。
+- 浏览器要求确认关闭固定标签时，避免将仍存在的窗口误报为已关闭。
