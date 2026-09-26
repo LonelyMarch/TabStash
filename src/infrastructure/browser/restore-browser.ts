@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import type { RestoreBrowser } from '../../application/archive/restore';
+import type { Diagnostic } from '../../i18n/core';
 
 /** Edge/Chromium 恢复 API 的薄适配器，不读取网页内容或使用内容脚本。 */
 export const restoreBrowser: RestoreBrowser = {
@@ -80,29 +81,32 @@ export const restoreBrowser: RestoreBrowser = {
    * 网络加载和重定向不作为创建成功条件，不宣称恢复登录、表单或页面滚动状态。
    */
   async verify(job, snapshot) {
-    if (job.windowId === undefined) return ['没有可核对的新窗口'];
+    if (job.windowId === undefined) return [{ key: 'diagnosticNoVerifyWindow' }];
     const window = await browser.windows.get(job.windowId, { populate: true });
     const tabs = [...(window.tabs ?? [])].sort((a, b) => a.index - b.index);
     const groups = await browser.tabGroups.query({ windowId: job.windowId });
-    const errors: string[] = [];
+    const errors: Diagnostic[] = [];
     const expected = [...snapshot.tabs].sort((a, b) => a.index - b.index);
-    if (tabs.length !== expected.length) errors.push('实际标签数量与归档不一致');
+    if (tabs.length !== expected.length) errors.push({ key: 'diagnosticTabCountMismatch' });
     for (const [index, source] of expected.entries()) {
       const mapping = job.tabs.find((entry) => entry.key === source.key);
       const actual = tabs.find((tab) => tab.id === mapping?.id);
       if (!actual) {
-        errors.push(`标签“${source.title || source.url || '无标题'}”在核对时不存在`);
+        errors.push({
+          key: 'diagnosticTabMissing',
+          params: { title: source.title || source.url || '' },
+        });
         continue;
       }
       if (actual.id !== tabs[index]?.id || actual.pinned !== source.pinned)
-        errors.push(`标签“${source.title || '无标题'}”顺序或置顶状态不一致`);
+        errors.push({ key: 'diagnosticTabOrder', params: { title: source.title || '' } });
       const expectedGroup = job.groups.find((entry) => entry.key === source.groupKey)?.id ?? -1;
       if (actual.groupId !== expectedGroup)
-        errors.push(`标签“${source.title || '无标题'}”分组不一致`);
+        errors.push({ key: 'diagnosticTabGroup', params: { title: source.title || '' } });
       if (source.key === snapshot.activeTabKey && !actual.active)
-        errors.push('实际活动标签与归档不一致');
+        errors.push({ key: 'diagnosticActiveTab' });
       if (actual.url?.startsWith('chrome-error:') || actual.url?.startsWith('edge-error:'))
-        errors.push(`标签“${source.title || '无标题'}”被浏览器拒绝加载`);
+        errors.push({ key: 'diagnosticTabLoad', params: { title: source.title || '' } });
     }
     for (const source of snapshot.groups) {
       const mapping = job.groups.find((entry) => entry.key === source.key);
@@ -113,9 +117,10 @@ export const restoreBrowser: RestoreBrowser = {
         actual.color !== source.color ||
         actual.collapsed !== source.collapsed
       )
-        errors.push(`标签组“${source.title || '未命名'}”属性未完整还原`);
+        errors.push({ key: 'diagnosticGroupAttributes', params: { title: source.title || '' } });
     }
-    if (snapshot.state && window.state !== snapshot.state) errors.push('实际窗口状态与归档不一致');
+    if (snapshot.state && window.state !== snapshot.state)
+      errors.push({ key: 'diagnosticWindowState' });
     return errors;
   },
   /**
@@ -127,18 +132,20 @@ export const restoreBrowser: RestoreBrowser = {
     const deadline = Date.now() + 12_000;
     while (Date.now() < deadline) {
       const tab = await browser.tabs.get(tabId);
-      if ((tab.pendingUrl ?? tab.url) !== progress.url) return ['页面地址已变化，未应用浏览进度'];
+      if ((tab.pendingUrl ?? tab.url) !== progress.url) return [{ key: 'diagnosticUrlChanged' }];
       try {
         const result = (await browser.tabs.sendMessage(tabId, {
           type: 'tabstash:restore-progress',
           progress,
-        })) as { warnings?: string[] };
-        return Array.isArray(result?.warnings) ? result.warnings : ['网页进度响应无效'];
+        })) as { warnings?: Diagnostic[] };
+        return Array.isArray(result?.warnings)
+          ? result.warnings
+          : [{ key: 'diagnosticProgressResponse' }];
       } catch {
         // 内容脚本可能仍在等待 document_idle，短暂重试不影响标签结构恢复。
         await new Promise<void>((resolve) => setTimeout(resolve, 250));
       }
     }
-    return ['网页未就绪，进度恢复超时'];
+    return [{ key: 'diagnosticProgressTimeout' }];
   },
 };

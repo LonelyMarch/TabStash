@@ -1,4 +1,5 @@
 import type { AutoArchiveStatus, ClosedWindowRecord } from '../../domain/archive/models';
+import { type Diagnostic, diagnosticFromError } from '../../i18n/core';
 import type { ClosedWindowRepository } from '../../infrastructure/db/closed-windows';
 import type { CloseSuppression, SessionStore } from '../../infrastructure/storage/session';
 import type { SettingsStore } from '../../infrastructure/storage/settings';
@@ -14,7 +15,7 @@ interface Dependencies {
 
 /** 自动归档只处理已记录的关闭事实；不会主动关闭窗口或从旧 runtime ID 重放操作。 */
 export class AutoArchiveService {
-  private error: string | null = null;
+  private error: Diagnostic | null = null;
   private readonly jobs = new Map<string, Promise<void>>();
 
   /** @param dependencies 关闭事件仓储、设置、会话与后台任务协调器。 */
@@ -32,7 +33,7 @@ export class AutoArchiveService {
       try {
         enabled = (await this.dependencies.settings.get()).autoArchiveClosedWindows;
       } catch (error: unknown) {
-        this.error = `关闭时无法读取自动归档设置：${String(error)}`;
+        this.error = diagnosticFromError(error, 'diagnosticAutoArchiveSettings');
       }
       const record: ClosedWindowRecord = {
         sessionId,
@@ -44,7 +45,7 @@ export class AutoArchiveService {
       await this.dependencies.repository.record(record);
       await this.process(record);
     } catch (error: unknown) {
-      this.error = `自动归档失败：${String(error)}`;
+      this.error = diagnosticFromError(error, 'diagnosticAutoArchiveFailed');
     }
     this.dependencies.changed();
   }
@@ -88,11 +89,11 @@ export class AutoArchiveService {
         try {
           await this.process(record);
         } catch (error: unknown) {
-          this.error = `自动归档待重试：${String(error)}`;
+          this.error = diagnosticFromError(error, 'diagnosticAutoArchiveRetry');
         }
       }
     } catch (error: unknown) {
-      this.error = `关闭记录读取失败：${String(error)}`;
+      this.error = diagnosticFromError(error, 'diagnosticClosedRead');
     }
     this.dependencies.changed();
     return this.status();

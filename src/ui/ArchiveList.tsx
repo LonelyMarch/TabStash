@@ -2,8 +2,9 @@ import { ChevronDown, ChevronRight, Pin } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ArchivedWindow, RestoreJob, TabSnapshot } from '../domain/archive/models';
 import { archiveTitle } from '../domain/archive/presentation';
+import { useLanguage } from '../i18n/react';
 import { onMessage, sendMessage } from '../infrastructure/messaging/protocol';
-import { RestoreControls, restoreResultText } from './RestoreControls';
+import { type ArchiveNotice, RestoreControls, restoreResultText } from './RestoreControls';
 import { TabIcon } from './TabIcon';
 
 /**
@@ -22,7 +23,8 @@ function SavedTab({
   grouped: boolean;
   active: boolean;
 }) {
-  const title = tab.title || tab.url || '无标题标签页';
+  const { t } = useLanguage();
+  const title = tab.title || tab.url || t('untitledTab');
   return (
     <div
       className={`tab-row saved-tab${grouped ? ' grouped' : ''}${active ? ' active' : ''}`}
@@ -46,9 +48,10 @@ function SavedTab({
  * @param props.error 读取失败信息，与“没有归档”空状态区分。
  */
 export function ArchiveList({ archives, error }: { archives: ArchivedWindow[]; error: string }) {
+  const { locale, t, date } = useLanguage();
   const [issues, setIssues] = useState<RestoreJob[]>([]);
   const [issueError, setIssueError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState<ArchiveNotice>(null);
   // 恢复通知只触发读取持久回执，跨侧栏与后台重启仍可查看未完整成功的原因。
   useEffect(() => {
     let generation = 0;
@@ -57,7 +60,7 @@ export function ArchiveList({ archives, error }: { archives: ArchivedWindow[]; e
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const timeout = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('恢复记录读取超时')), 8000);
+          timer = setTimeout(() => reject(new Error('Restore issues timed out')), 8000);
         });
         const result = await Promise.race([sendMessage('getRestoreIssues'), timeout]);
         if (current === generation) {
@@ -65,7 +68,10 @@ export function ArchiveList({ archives, error }: { archives: ArchivedWindow[]; e
           setIssueError('');
         }
       } catch (failure: unknown) {
-        if (current === generation) setIssueError(`恢复记录读取失败：${String(failure)}`);
+        if (current === generation) {
+          console.error('Could not load restore issues', failure);
+          setIssueError('restoreIssueReadFailed');
+        }
       } finally {
         if (timer !== undefined) clearTimeout(timer);
       }
@@ -82,25 +88,25 @@ export function ArchiveList({ archives, error }: { archives: ArchivedWindow[]; e
   return (
     <section aria-labelledby="archive-heading" className="archive-section" data-native-keyboard>
       <div className="section-heading">
-        <h2 id="archive-heading">已归档</h2>
+        <h2 id="archive-heading">{t('archived')}</h2>
         <span className="section-count">{archives.length}</span>
       </div>
       {notice ? (
         <output className="archive-feedback" aria-live="polite">
-          {notice}
+          {'key' in notice ? t(notice.key) : restoreResultText(notice.restore, locale)}
         </output>
       ) : null}
       {issueError ? (
         <p role="status" className="help-text">
-          {issueError}
+          {t('restoreIssueReadFailed')}
         </p>
       ) : null}
       {issues.length ? (
         <details className="restore-issues">
-          <summary>最近恢复异常（{issues.length}）</summary>
+          <summary>{t('recentRestoreIssues', { count: issues.length })}</summary>
           {issues.map((job) => (
             <p className="help-text" key={job.requestId}>
-              {new Date(job.startedAt).toLocaleString()}：{restoreResultText(job)}
+              {date(job.startedAt)}: {restoreResultText(job, locale)}
             </p>
           ))}
         </details>
@@ -110,9 +116,7 @@ export function ArchiveList({ archives, error }: { archives: ArchivedWindow[]; e
           {error}
         </p>
       ) : null}
-      {!error && archives.length === 0 ? (
-        <p className="empty-state">还没有归档。使用窗口旁的归档按钮保存。</p>
-      ) : null}
+      {!error && archives.length === 0 ? <p className="empty-state">{t('noArchives')}</p> : null}
       {archives.map((archive) => {
         const ordered = [...archive.snapshot.tabs].sort((a, b) => a.index - b.index);
         const displayed = new Set<string>();
@@ -128,15 +132,15 @@ export function ArchiveList({ archives, error }: { archives: ArchivedWindow[]; e
                 <span className="window-copy">
                   <strong>
                     {archive.pinned ? '★ ' : ''}
-                    {archiveTitle(archive.snapshot)}
+                    {archiveTitle(archive.snapshot, t('archivedWindow'))}
                   </strong>
                   <small>
-                    {new Date(archive.archivedAt).toLocaleString()} ·{' '}
+                    {date(archive.archivedAt)} ·{' '}
                     {archive.source === 'manual-close'
-                      ? '归档并关闭'
+                      ? t('archiveAndClose')
                       : archive.source === 'manual'
-                        ? '手动归档'
-                        : '自动归档'}
+                        ? t('manualArchive')
+                        : t('autoArchive')}
                   </small>
                 </span>
                 <span className="tab-count">{ordered.length}</span>
@@ -163,7 +167,7 @@ export function ArchiveList({ archives, error }: { archives: ArchivedWindow[]; e
                           <ChevronDown className="saved-group-chevron-open" size={14} />
                         </span>
                         <span aria-hidden="true" className={`group-dot ${group.color}`} />
-                        <span className="node-title">{group.title || '未命名标签组'}</span>
+                        <span className="node-title">{group.title || t('untitledGroup')}</span>
                         <span className="tab-count">
                           {ordered.filter((entry) => entry.groupKey === group.key).length}
                         </span>

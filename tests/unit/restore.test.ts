@@ -99,7 +99,7 @@ describe('恢复与恢复并移除', () => {
       throw new Error('窗口创建被拒绝');
     });
     const result = await service.execute(command(true));
-    expect(result.errors.join('；')).toContain('窗口创建被拒绝');
+    expect(result.errors.map((error) => error.key)).toContain('diagnosticRestoreStopped');
     expect(result.state).toBe('partial');
     expect(browser.createTab).not.toHaveBeenCalled();
     expect(await db.archives.get('a1')).toBeDefined();
@@ -115,7 +115,7 @@ describe('恢复与恢复并移除', () => {
     expect(result.state).toBe('partial');
     expect(result.tabs).toHaveLength(2);
     expect(browser.createTab).toHaveBeenCalledTimes(2);
-    expect(result.errors.join('；')).toContain('不支持');
+    expect(result.errors.map((error) => error.key)).toContain('diagnosticUnsupportedUrl');
     expect(await db.archives.get('a1')).toBeDefined();
   });
   it('普通恢复保留归档，按顺序创建标签、恢复组、活动标签和窗口状态', async () => {
@@ -155,11 +155,11 @@ describe('恢复与恢复并移除', () => {
       media: [],
     };
     await db.archives.update('a1', { snapshot: changed });
-    browser.restoreProgress = vi.fn(async () => ['页面滚动位置未完整还原']);
+    browser.restoreProgress = vi.fn(async () => [{ key: 'diagnosticScroll' } as const]);
     const result = await service.execute(command(true));
     expect(browser.restoreProgress).toHaveBeenCalledWith(10, first.progress);
     expect(result.state).toBe('complete');
-    expect(result.progressWarnings?.join('；')).toContain('页面滚动位置未完整还原');
+    expect(result.progressWarnings?.map((warning) => warning.key)).toContain('diagnosticScroll');
     expect(result.archiveRemoved).toBe(true);
     expect(await db.archives.get('a1')).toBeUndefined();
   });
@@ -172,7 +172,7 @@ describe('恢复与恢复并移除', () => {
     const result = await service.execute(command(true));
     expect(result.state).toBe('partial');
     expect(result.tabs).toHaveLength(2);
-    expect(result.errors.join('；')).toContain('受限 URL');
+    expect(result.errors.map((error) => error.key)).toContain('diagnosticRestoreTab');
     expect(browser.createGroup).toHaveBeenCalledWith(9, [12], snapshot.groups[0]);
     expect(await db.archives.get('a1')).toBeDefined();
   });
@@ -192,7 +192,7 @@ describe('恢复与恢复并移除', () => {
   });
 
   it('浏览器最终核对不一致时即使全部标签创建成功也不删除归档', async () => {
-    browser.verify = vi.fn(async () => ['实际分组不一致']);
+    browser.verify = vi.fn(async () => [{ key: 'diagnosticTabGroup' } as const]);
     const result = await service.execute(command(true));
     expect(result.tabs).toHaveLength(3);
     expect(result.state).toBe('partial');

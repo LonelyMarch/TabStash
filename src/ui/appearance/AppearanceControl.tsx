@@ -2,18 +2,19 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type AppearanceMode, isAppearanceMode } from '../../domain/appearance';
+import { useLanguage } from '../../i18n/react';
 import { onMessage, sendMessage } from '../../infrastructure/messaging/protocol';
-
-const labels: Record<AppearanceMode, string> = {
-  auto: '自动',
-  light: '亮色',
-  dark: '暗色',
-};
 
 /**
  * 在所有侧栏之间同步外观模式，并提供可用键盘操作的设置菜单。
  */
 export function AppearanceControl() {
+  const { t } = useLanguage();
+  const labels: Record<AppearanceMode, string> = {
+    auto: t('auto'),
+    light: t('light'),
+    dark: t('dark'),
+  };
   const [mode, setMode] = useState<AppearanceMode>(() => {
     const initial = document.documentElement.dataset.theme;
     return isAppearanceMode(initial) ? initial : 'auto';
@@ -33,7 +34,10 @@ export function AppearanceControl() {
       document.documentElement.dataset.theme = saved;
       setError('');
     } catch (failure: unknown) {
-      if (current === generation.current) setError(`外观读取失败：${String(failure)}`);
+      if (current === generation.current) {
+        console.error('Could not load appearance', failure);
+        setError('appearanceReadFailed');
+      }
     }
   }, []);
 
@@ -59,7 +63,8 @@ export function AppearanceControl() {
       document.documentElement.dataset.theme = saved;
       setError('');
     } catch (failure: unknown) {
-      setError(`外观保存失败：${String(failure)}`);
+      console.error('Could not save appearance', failure);
+      setError('appearanceSaveFailed');
     } finally {
       writing.current = false;
       setBusy(false);
@@ -72,10 +77,10 @@ export function AppearanceControl() {
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
           <button
-            aria-label={`外观：${labels[mode]}`}
+            aria-label={t('appearanceCurrent', { mode: labels[mode] })}
             className="appearance-trigger icon-button"
             disabled={busy}
-            title={`外观：${labels[mode]}`}
+            title={t('appearanceCurrent', { mode: labels[mode] })}
             type="button"
           >
             <CurrentIcon aria-hidden="true" size={18} />
@@ -89,7 +94,9 @@ export function AppearanceControl() {
             data-native-keyboard
             sideOffset={6}
           >
-            <DropdownMenu.Label className="appearance-menu-label">外观</DropdownMenu.Label>
+            <DropdownMenu.Label className="appearance-menu-label">
+              {t('appearance')}
+            </DropdownMenu.Label>
             <DropdownMenu.RadioGroup
               onValueChange={(value) => {
                 if (isAppearanceMode(value)) void update(value);
@@ -117,7 +124,11 @@ export function AppearanceControl() {
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
-      {error ? <output className="appearance-error">{error}</output> : null}
+      {error ? (
+        <output className="appearance-error">
+          {t(error as 'appearanceReadFailed' | 'appearanceSaveFailed')}
+        </output>
+      ) : null}
     </div>
   );
 }

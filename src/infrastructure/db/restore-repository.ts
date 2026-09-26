@@ -113,10 +113,7 @@ export class RestoreRepository {
         await this.db.restoreJobs.put({
           ...job,
           state: 'interrupted',
-          errors: [
-            ...job.errors,
-            '恢复被后台重启中断；已保留原归档和已创建窗口，请检查后重新恢复。',
-          ],
+          errors: [...job.errors, { key: 'diagnosticRestoreInterrupted' }],
         });
         // 中断已明确处理，进度保存在恢复回执；不留无限挂起的活动操作锁。
         await this.db.operations.delete(job.requestId);

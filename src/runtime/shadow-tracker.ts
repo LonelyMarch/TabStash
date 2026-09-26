@@ -4,6 +4,7 @@ import type {
   WindowSnapshot,
 } from '../domain/archive/models';
 import { computeSnapshotHash } from '../domain/archive/snapshot';
+import { type Diagnostic, diagnosticFromError } from '../i18n/core';
 
 /** 可替换的捕获与持久化接口，便于验证关闭事件和写入事件交错。 */
 export interface ShadowDependencies {
@@ -28,7 +29,7 @@ export class ShadowTracker {
   private readonly revisions = new Map<number, number>();
   private readonly timers = new Map<number, ReturnType<typeof setTimeout>>();
   private readonly jobs = new Map<number, Promise<void>>();
-  private readonly failures = new Map<number, string>();
+  private readonly failures = new Map<number, Diagnostic>();
 
   /** @param dependencies 浏览器捕获、会话读取和数据库写入函数。 */
   constructor(private readonly dependencies: ShadowDependencies) {}
@@ -80,7 +81,7 @@ export class ShadowTracker {
         if (isCurrent()) this.failures.delete(windowId);
       } catch (error: unknown) {
         if (isCurrent())
-          this.failures.set(windowId, error instanceof Error ? error.message : String(error));
+          this.failures.set(windowId, diagnosticFromError(error, 'diagnosticShadowFailed'));
       } finally {
         if (isCurrent()) this.dependencies.onSettled?.();
       }
@@ -117,10 +118,10 @@ export class ShadowTracker {
   }
 
   /** @param windowIds 当前窗口集合，过滤已经关闭窗口的错误提示。 */
-  getFailures(windowIds: readonly number[]): string[] {
+  getFailures(windowIds: readonly number[]): Diagnostic[] {
     return windowIds.flatMap((id) => {
       const message = this.failures.get(id);
-      return message ? [`窗口 ${id}：${message}`] : [];
+      return message ? [message] : [];
     });
   }
 }

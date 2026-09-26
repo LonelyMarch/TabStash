@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import type { MediaProgress, PageProgress, ScrollProgress } from '../src/domain/archive/models';
+import type { Diagnostic } from '../src/i18n/core';
 
 const DOCUMENT_PATH = 'document';
 const MAX_SCROLLS = 20;
@@ -110,9 +111,9 @@ function targetPosition(saved: number, savedMax: number, currentMax: number): nu
 async function restoreProgress(
   progress: PageProgress,
   hasUserInteracted: () => boolean,
-): Promise<{ warnings: string[] }> {
-  if (location.href !== progress.url) return { warnings: ['页面地址已变化，未应用浏览进度'] };
-  if (hasUserInteracted()) return { warnings: ['用户已操作页面，未覆盖当前浏览进度'] };
+): Promise<{ warnings: Diagnostic[] }> {
+  if (location.href !== progress.url) return { warnings: [{ key: 'diagnosticUrlChanged' }] };
+  if (hasUserInteracted()) return { warnings: [{ key: 'diagnosticUserInteracted' }] };
   let userInteracted = false;
   const stopForUser = () => {
     userInteracted = true;
@@ -165,9 +166,9 @@ async function restoreProgress(
     for (const event of ['wheel', 'touchstart', 'keydown', 'pointerdown'])
       window.removeEventListener(event, stopForUser, true);
   }
-  const warnings: string[] = [];
-  if (pendingScrolls.size) warnings.push('页面滚动位置未完整还原');
-  if (pendingMedia.size || unsupportedMedia) warnings.push('媒体播放位置未完整还原');
+  const warnings: Diagnostic[] = [];
+  if (pendingScrolls.size) warnings.push({ key: 'diagnosticScroll' });
+  if (pendingMedia.size || unsupportedMedia) warnings.push({ key: 'diagnosticMedia' });
   return { warnings };
 }
 

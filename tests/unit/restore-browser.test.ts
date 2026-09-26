@@ -74,9 +74,9 @@ describe('恢复浏览器 API 边界', () => {
     });
     api.tabGroups.query.mockResolvedValue([]);
     const errors = await restoreBrowser.verify(job, snapshot);
-    expect(errors.join('；')).toContain('置顶');
-    expect(errors.join('；')).toContain('分组');
-    expect(errors.join('；')).toContain('活动标签');
-    expect(errors.join('；')).toContain('窗口状态');
+    expect(errors.map((error) => error.key)).toContain('diagnosticTabOrder');
+    expect(errors.map((error) => error.key)).toContain('diagnosticTabGroup');
+    expect(errors.map((error) => error.key)).toContain('diagnosticActiveTab');
+    expect(errors.map((error) => error.key)).toContain('diagnosticWindowState');
   });
 });

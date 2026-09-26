@@ -1,7 +1,10 @@
 import { createRoot } from 'react-dom/client';
 import { browser } from 'wxt/browser';
 import { type BrowserBrand, detectBrowser } from '../../src/domain/appearance';
+import { effectiveLocale, type LanguageMode } from '../../src/i18n/core';
+import { LanguageProvider } from '../../src/i18n/react';
 import { AppearanceStore } from '../../src/infrastructure/storage/appearance';
+import { LanguageStore } from '../../src/infrastructure/storage/language';
 import App from './App';
 import './styles/index.css';
 
@@ -36,7 +39,27 @@ async function mountSidePanel(): Promise<void> {
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
-  createRoot(rootElement).render(<App />);
+  // 语言设置与外观一样在首次渲染前读取，避免英文/中文界面短暂闪烁。
+  let languageMode: LanguageMode = 'auto';
+  let languageTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    languageMode = await Promise.race([
+      new LanguageStore(browser.storage.local).get(),
+      new Promise<never>((_, reject) => {
+        languageTimer = setTimeout(() => reject(new Error('Language read timed out')), 1000);
+      }),
+    ]);
+  } catch (error: unknown) {
+    console.warn('Could not load language setting; using browser language', error);
+  } finally {
+    if (languageTimer !== undefined) clearTimeout(languageTimer);
+  }
+  document.documentElement.lang = effectiveLocale(languageMode, browser.i18n.getUILanguage());
+  createRoot(rootElement).render(
+    <LanguageProvider initialMode={languageMode}>
+      <App />
+    </LanguageProvider>,
+  );
 }
 
 void mountSidePanel();

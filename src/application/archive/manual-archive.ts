@@ -5,6 +5,7 @@ import type {
   WindowSnapshot,
 } from '../../domain/archive/models';
 import { computeSnapshotHash } from '../../domain/archive/snapshot';
+import { AppError, diagnosticFromError } from '../../i18n/core';
 import type { ArchiveRepository } from '../../infrastructure/db/repository';
 import type { SessionStore } from '../../infrastructure/storage/session';
 
@@ -85,7 +86,7 @@ export class ManualArchiveService {
         throw new Error('请求 ID 已用于其他操作');
       // 已保存但没有最终关闭回执，可能是 Worker 中断；返回原归档并提示核对，绝不重放关闭。
       return previous.closeAfterArchive && previous.outcome === 'saved'
-        ? { ...previous, warning: '归档已保存，关闭结果待核对；本次重试没有再次关闭窗口。' }
+        ? { ...previous, warning: { key: 'diagnosticArchiveSavedCloseUnknown' } }
         : previous;
     }
     const sessionId = await session.getSessionId();
@@ -128,9 +129,9 @@ export class ManualArchiveService {
       // 写入期间窗口可能新增标签；检测到结构变化时保留归档，但停止关闭。
       const latest = await capture(command.windowId);
       if ((await computeSnapshotHash(latest)) !== snapshotHash)
-        throw new Error('窗口内容在保存期间变化，已保留窗口，请重新归档');
+        throw new AppError({ key: 'diagnosticWindowChanged' });
       if (snapshot.tabs.some((tab) => !tab.url))
-        throw new Error('部分标签 URL 未读取到，已保留窗口');
+        throw new AppError({ key: 'diagnosticMissingUrl' });
       await session.saveSuppression({
         sessionId,
         windowId: command.windowId,
@@ -146,21 +147,23 @@ export class ManualArchiveService {
       changed();
       return completed;
     } catch (error: unknown) {
-      const warning = error instanceof Error ? error.message : String(error);
+      const cause = diagnosticFromError(error, 'diagnosticBrowser');
       // 窗口已关闭但回执写入失败时保留未完成日志，避免把关闭结果伪装成未关闭。
       const result: ArchiveReceipt = {
         ...receipt,
         outcome: closed ? 'closed' : 'close-failed',
         warning: closed
-          ? `窗口已关闭，但操作记录待核对：${warning}`
-          : `归档已保存，但未能完成关闭：${warning}`,
+          ? { key: 'diagnosticClosedRecordReview' }
+          : cause.key === 'diagnosticWindowChanged' || cause.key === 'diagnosticMissingUrl'
+            ? cause
+            : { key: 'diagnosticCloseFailed' },
       };
       if (!closed) {
         try {
           await session.removeSuppression(command.windowId);
           await repository.finishManualArchive(result);
         } catch {
-          result.warning += '；操作记录清理失败，待核对。';
+          result.warning = { key: 'diagnosticCleanupFailed' };
         }
       }
       changed();

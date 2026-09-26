@@ -89,7 +89,7 @@ describe('窗口影子事件顺序', () => {
       getSessionId: async () => 's',
     });
     await tracker.refresh(1);
-    expect(tracker.getFailures([1])).toEqual(['窗口 1：磁盘写入失败']);
+    expect(tracker.getFailures([1])).toEqual([{ key: 'diagnosticShadowFailed' }]);
     await tracker.refresh(1);
     expect(tracker.getFailures([1])).toEqual([]);
   });

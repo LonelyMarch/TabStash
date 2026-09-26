@@ -6,6 +6,7 @@ import type {
   TabSnapshot,
   WindowSnapshot,
 } from '../../domain/archive/models';
+import { AppError, type Diagnostic, diagnosticFromError } from '../../i18n/core';
 import type { RestoreRepository } from '../../infrastructure/db/restore-repository';
 
 /** 恢复的浏览器能力，以薄适配器隔离 API，测试可对任意步骤注入失败。 */
@@ -17,8 +18,8 @@ export interface RestoreBrowser {
   collapseGroup(groupId: number, collapsed: boolean): Promise<void>;
   activateTab(tabId: number): Promise<void>;
   applyWindow(windowId: number, snapshot: WindowSnapshot): Promise<void>;
-  verify(job: RestoreJob, snapshot: WindowSnapshot): Promise<string[]>;
-  restoreProgress(tabId: number, progress: PageProgress): Promise<string[]>;
+  verify(job: RestoreJob, snapshot: WindowSnapshot): Promise<Diagnostic[]>;
+  restoreProgress(tabId: number, progress: PageProgress): Promise<Diagnostic[]>;
 }
 
 /** 恢复用例依赖；每次浏览器写入后立即记录进度，存储失败不继续操作。 */
@@ -112,14 +113,19 @@ export class RestoreService {
       const ordered = [...snapshot.tabs].sort((a, b) => a.index - b.index);
       for (const tab of ordered) {
         try {
-          if (!tab.url) throw new Error('未保存 URL');
+          if (!tab.url) throw new AppError({ key: 'diagnosticMissingSavedUrl' });
           const protocol = new URL(tab.url).protocol;
           if (!['http:', 'https:', 'file:', 'about:', 'edge:', 'chrome:'].includes(protocol))
-            throw new Error(`不支持恢复此地址类型：${protocol}`);
+            throw new AppError({ key: 'diagnosticUnsupportedUrl', params: { protocol } });
           const id = await browser.createTab(created.windowId, tab, job.tabs.length);
           job.tabs.push({ key: tab.key, id });
         } catch (error: unknown) {
-          job.errors.push(`标签“${tab.title || tab.url || '无标题'}”未恢复：${String(error)}`);
+          const diagnostic = diagnosticFromError(error, 'diagnosticRestoreTab');
+          job.errors.push(
+            diagnostic.key === 'diagnosticRestoreTab'
+              ? { ...diagnostic, params: { title: tab.title || tab.url || '' } }
+              : diagnostic,
+          );
         }
         await repository.save(job);
       }
@@ -128,7 +134,8 @@ export class RestoreService {
         try {
           await browser.removePlaceholder(created.windowId, created.placeholderTabId);
         } catch (error: unknown) {
-          job.errors.push(`默认标签未移除：${String(error)}`);
+          console.error('Could not remove placeholder tab', error);
+          job.errors.push({ key: 'diagnosticPlaceholder' });
         }
       }
       for (const group of snapshot.groups) {
@@ -139,14 +146,18 @@ export class RestoreService {
         try {
           if (!members.length || !ids.length) throw new Error('没有可恢复的组成员');
           if (ids.length !== members.length)
-            job.errors.push(`标签组“${group.title || '未命名'}”仅恢复了部分成员`);
+            job.errors.push({
+              key: 'diagnosticGroupPartial',
+              params: { title: group.title || '' },
+            });
           if (members.some((tab) => tab.pinned)) throw new Error('浏览器不支持在组内放置固定标签');
           job.groups.push({
             key: group.key,
             id: await browser.createGroup(created.windowId, ids, group),
           });
         } catch (error: unknown) {
-          job.errors.push(`标签组“${group.title || '未命名'}”未完整恢复：${String(error)}`);
+          console.error('Could not restore tab group', error);
+          job.errors.push({ key: 'diagnosticGroupRestore', params: { title: group.title || '' } });
         }
         await repository.save(job);
       }
@@ -155,15 +166,16 @@ export class RestoreService {
           (tab) => tab.groupKey && !snapshot.groups.some((group) => group.key === tab.groupKey),
         )
       )
-        job.errors.push('部分标签引用的组不存在');
+        job.errors.push({ key: 'diagnosticGroupReference' });
       if (snapshot.activeTabKey) {
         const active = job.tabs.find((tab) => tab.key === snapshot.activeTabKey);
-        if (!active) job.errors.push('原活动标签未恢复');
+        if (!active) job.errors.push({ key: 'diagnosticOriginalActive' });
         else
           try {
             await browser.activateTab(active.id);
           } catch (error: unknown) {
-            job.errors.push(`活动标签设置失败：${String(error)}`);
+            console.error('Could not activate restored tab', error);
+            job.errors.push({ key: 'diagnosticActivate' });
           }
       }
       // 激活标签可能展开组，最后再恢复归档中的折叠状态。
@@ -173,18 +185,21 @@ export class RestoreService {
           try {
             await browser.collapseGroup(restored.id, group.collapsed);
           } catch (error: unknown) {
-            job.errors.push(`组折叠状态恢复失败：${String(error)}`);
+            console.error('Could not restore group collapse state', error);
+            job.errors.push({ key: 'diagnosticCollapse' });
           }
       }
       try {
         await browser.applyWindow(created.windowId, snapshot);
       } catch (error: unknown) {
-        job.errors.push(`窗口状态恢复失败：${String(error)}`);
+        console.error('Could not restore window state', error);
+        job.errors.push({ key: 'diagnosticApplyWindow' });
       }
       try {
         job.errors.push(...(await browser.verify(job, snapshot)));
       } catch (error: unknown) {
-        job.errors.push(`恢复结果核对失败：${String(error)}`);
+        console.error('Could not verify restored window', error);
+        job.errors.push({ key: 'diagnosticVerify' });
       }
       // 网页进度与浏览器标签结构分别记录；进度失败不改变“恢复并移除”的结构判定。
       job.progressWarnings = (
@@ -195,12 +210,11 @@ export class RestoreService {
             return [
               browser
                 .restoreProgress(restored.id, tab.progress)
-                .then((warnings) =>
-                  warnings.map((warning) => `标签“${tab.title || tab.url}”：${warning}`),
-                )
-                .catch((error: unknown) => [
-                  `标签“${tab.title || tab.url}”：网页进度未还原：${String(error)}`,
-                ]),
+                .then((warnings) => warnings)
+                .catch((error: unknown) => {
+                  console.error('Could not restore browsing progress', error);
+                  return [{ key: 'diagnosticProgress' } as Diagnostic];
+                }),
             ];
           }),
         )
@@ -213,11 +227,11 @@ export class RestoreService {
       return result;
     } catch (error: unknown) {
       job.state = 'partial';
-      job.errors.push(`恢复停止，原归档保留：${String(error)}`);
+      job.errors.push(diagnosticFromError(error, 'diagnosticRestoreStopped'));
       try {
         await repository.finish(job);
       } catch {
-        job.errors.push('恢复结果未能写入，后台重启后需核对。');
+        job.errors.push({ key: 'diagnosticRestoreWriteFailed' });
       }
       changed();
       return job;

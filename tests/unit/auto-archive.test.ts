@@ -214,7 +214,7 @@ describe('自动归档关闭消费', () => {
     db.archives.hook('creating', fail);
     await service.onClosed(7);
     expect((await service.status()).pendingCount).toBe(1);
-    expect((await service.status()).error).toContain('配额不足');
+    expect((await service.status()).error?.key).toBe('diagnosticAutoArchiveFailed');
     expect(await archives.getShadow('s', 7)).toBeDefined();
     db.archives.hook('creating').unsubscribe(fail);
     // 当前开关已经关闭，但明确记录过的 ON 关闭事件仍按原决策完成。

@@ -86,7 +86,7 @@ describe('手动归档安全性', () => {
     const input = command(true);
     const result = await service.execute(input);
     expect(result.outcome).toBe('close-failed');
-    expect(result.warning).toContain('关闭被拒绝');
+    expect(result.warning?.key).toBe('diagnosticCloseFailed');
     expect(await repository.getArchives()).toHaveLength(1);
     await new ManualArchiveService(dependencies).execute(input);
     expect(dependencies.close).toHaveBeenCalledTimes(1);
@@ -98,7 +98,7 @@ describe('手动归档安全性', () => {
     });
     const result = await service.execute(command(true));
     expect(result.outcome).toBe('close-failed');
-    expect(result.warning).toContain('会话写入失败');
+    expect(result.warning?.key).toBe('diagnosticCloseFailed');
     expect(await repository.getArchives()).toHaveLength(1);
     expect(dependencies.close).not.toHaveBeenCalled();
   });
@@ -115,7 +115,7 @@ describe('手动归档安全性', () => {
         ],
       });
     const result = await service.execute(command(true));
-    expect(result.warning).toContain('内容在保存期间变化');
+    expect(result.warning?.key).toBe('diagnosticWindowChanged');
     expect(dependencies.close).not.toHaveBeenCalled();
     expect((await repository.getArchives())[0]?.snapshot.tabs).toHaveLength(1);
   });
@@ -142,10 +142,10 @@ describe('手动归档安全性', () => {
   it('关闭后写回执失败保留待核对日志，Worker 重建不会重放关闭', async () => {
     vi.spyOn(repository, 'finishManualArchive').mockRejectedValueOnce(new Error('落盘失败'));
     const input = command(true);
-    expect((await service.execute(input)).warning).toContain('窗口已关闭');
+    expect((await service.execute(input)).warning?.key).toBe('diagnosticClosedRecordReview');
     expect(await repository.getPendingOperations()).toHaveLength(1);
     const retry = await new ManualArchiveService(dependencies).execute(input);
-    expect(retry.warning).toContain('待核对');
+    expect(retry.warning?.key).toBe('diagnosticArchiveSavedCloseUnknown');
     expect(dependencies.close).toHaveBeenCalledTimes(1);
     expect(await repository.getArchives()).toHaveLength(1);
   });
