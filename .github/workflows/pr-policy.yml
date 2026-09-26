@@ -1,0 +1,65 @@
+name: PR Policy
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
+    branches:
+      - dev
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 检出待审查版本
+        uses: actions/checkout@v4
+
+      - name: 校验提交标题与发布来源
+        shell: bash
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          CURRENT_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # 普通 PR 的标题与贡献指南中的必填 scope 提交格式一致。
+          conventional_pattern='^(feat|fix|docs|refactor|test|chore|build|ci|perf|style|revert)\([a-z0-9][a-z0-9._/-]*\)!?: .+'
+          if [[ ! "$PR_TITLE" =~ $conventional_pattern ]]; then
+            echo 'PR 标题须符合 <type>(<scope>): <简短说明>。'
+            exit 1
+          fi
+
+          if [[ "$BASE_REF" == 'master' ]]; then
+            # 只认可本仓库的 dev，避免 Fork 中同名分支绕过发布来源限制。
+            if [[ "$HEAD_REF" != 'dev' || "$HEAD_REPOSITORY" != "$CURRENT_REPOSITORY" ]]; then
+              echo 'master 只接受本仓库 dev 分支发起的发布 PR。'
+              exit 1
+            fi
+
+            release_pattern='^chore\(release\): 发布 v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$'
+            if [[ ! "$PR_TITLE" =~ $release_pattern ]]; then
+              echo '发布 PR 标题须符合 chore(release): 发布 vX.Y.Z。'
+              exit 1
+            fi
+
+            # 发布标题与本次提交的包版本相同，避免合并后标签与产物版本分离。
+            package_version="$(node -p "require('./package.json').version")"
+            title_version="${PR_TITLE#chore(release): 发布 v}"
+            if [[ "$title_version" != "$package_version" ]]; then
+              echo "发布标题版本 $title_version 与 package.json 版本 $package_version 不一致。"
+              exit 1
+            fi
+          fi

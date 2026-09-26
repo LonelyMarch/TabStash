@@ -1,0 +1,40 @@
+# 依赖与包管理器缓存
+node_modules/
+.pnpm-store/
+
+# WXT、浏览器扩展构建产物
+.wxt/
+.output/
+.web-ext/
+coverage/
+*.tsbuildinfo
+
+# 测试报告与本地浏览器下载
+playwright-report/
+test-results/
+.tmp/
+tmp/
+
+# 本机配置、编辑器与系统文件
+web-ext.config.ts
+.vscode/
+.idea/
+.claude/
+.agent/
+.agents/
+.codex/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 本地环境变量与日志
+.env
+.env.*
+!.env.example
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore

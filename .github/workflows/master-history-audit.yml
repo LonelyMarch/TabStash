@@ -1,0 +1,69 @@
+name: Master History Audit
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出完整历史
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 核对 master 更新来源
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          zero_sha='0000000000000000000000000000000000000000'
+
+          if [[ "$BEFORE_SHA" == "$zero_sha" ]]; then
+            # 仓库首次推送允许唯一的初始化根提交，此后仅接受 dev 合并。
+            parent_count="$(git show -s --format='%P' "$AFTER_SHA" | wc -w)"
+            if [[ "$parent_count" -ne 0 ]]; then
+              echo 'master 首次推送必须指向无父提交。'
+              exit 1
+            fi
+            exit 0
+          fi
+
+          git fetch --no-tags origin dev:refs/remotes/origin/dev
+          read -r commit first_parent second_parent extra_parent < <(git rev-list --parents -n 1 "$AFTER_SHA")
+          if [[ -z "${first_parent:-}" || -z "${second_parent:-}" || -n "${extra_parent:-}" ]]; then
+            echo 'master 更新必须是恰好有两个父提交的合并。'
+            exit 1
+          fi
+          if [[ "$first_parent" != "$BEFORE_SHA" ]]; then
+            echo '合并的第一父提交必须是更新前的 master HEAD。'
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$second_parent" origin/dev; then
+            echo '合并的第二父提交必须来自 dev 历史。'
+            exit 1
+          fi
+          if [[ "$(git rev-list --first-parent --count "$BEFORE_SHA..$AFTER_SHA")" -ne 1 ]]; then
+            echo '一次发布只能为 master 增加一个合并提交。'
+            exit 1
+          fi
+          if [[ "$(git rev-parse "$AFTER_SHA^{tree}")" != "$(git rev-parse "$second_parent^{tree}")" ]]; then
+            echo '发布合并不能包含 dev 之外的文件修改。'
+            exit 1
+          fi
+
+          # 合并标题统一使用版本号，便于从 master 历史定位正式发布。
+          subject="$(git show -s --format='%s' "$AFTER_SHA")"
+          if [[ ! "$subject" =~ ^chore\(release\):\ 发布\ v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo 'master 合并提交标题须符合 chore(release): 发布 vX.Y.Z。'
+            exit 1
+          fi

@@ -1,0 +1,166 @@
+.archive-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+.archive-action {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--panel-radius-small);
+  background: transparent;
+  color: var(--panel-muted);
+  cursor: pointer;
+}
+.archive-action:hover {
+  background: var(--panel-hover);
+  color: var(--panel-accent);
+}
+.archive-action:disabled {
+  opacity: 0.4;
+  cursor: wait;
+}
+.archive-action:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--panel-accent);
+  outline-offset: -2px;
+}
+.action-tooltip {
+  z-index: 20;
+  max-width: 220px;
+  padding: 5px 8px;
+  border-radius: var(--panel-radius-medium);
+  background: var(--panel-foreground);
+  color: var(--panel-background);
+  font-size: 12px;
+}
+.archive-section {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border);
+}
+.archive-item {
+  margin-bottom: 4px;
+}
+.archive-item > summary {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 40px;
+  cursor: pointer;
+  padding: 0 4px 0 0;
+  border-radius: var(--panel-radius-small);
+  list-style: none;
+}
+.archive-item > summary .window-copy,
+.archive-item > summary .tab-count {
+  margin-left: 7px;
+}
+.archive-item > summary::-webkit-details-marker {
+  display: none;
+}
+.archive-disclosure {
+  display: grid;
+  width: 28px;
+  height: 40px;
+  flex: none;
+  place-items: center;
+  color: var(--panel-muted);
+}
+.archive-disclosure svg {
+  grid-area: 1 / 1;
+}
+.archive-chevron-open,
+.archive-item[open] .archive-chevron-closed {
+  display: none;
+}
+.archive-item[open] .archive-chevron-open {
+  display: block;
+}
+.archive-item summary:hover {
+  background: var(--panel-hover);
+}
+
+.saved-group > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.saved-group > summary::-webkit-details-marker {
+  display: none;
+}
+.saved-group-disclosure {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  place-items: center;
+}
+.saved-group-disclosure svg {
+  grid-area: 1 / 1;
+}
+.saved-group-chevron-open,
+.saved-group[open] .saved-group-chevron-closed {
+  display: none;
+}
+.saved-group[open] .saved-group-chevron-open {
+  display: block;
+}
+.saved-tab {
+  cursor: default;
+}
+
+.restore-controls {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+.restore-buttons {
+  gap: 2px;
+}
+.restore-remove-icon {
+  position: relative;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+}
+.restore-remove-icon svg:last-child {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+.restore-buttons .archive-action[aria-pressed="true"] {
+  color: var(--panel-accent);
+}
+.restore-buttons .restore-delete-button:hover {
+  color: var(--panel-danger);
+}
+.restore-issues {
+  margin-bottom: 8px;
+}
+.restore-issues > summary {
+  cursor: pointer;
+  color: var(--panel-muted);
+}
+
+.archive-entry {
+  position: relative;
+}
+.archive-entry .archive-item > summary {
+  padding-right: 144px;
+}
+
+.archive-feedback {
+  display: block;
+  margin: 6px 0 10px;
+  padding: 7px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius-medium);
+  background: var(--panel-surface);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
