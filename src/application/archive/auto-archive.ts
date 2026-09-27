@@ -22,18 +22,19 @@ export class AutoArchiveService {
   constructor(private readonly dependencies: Dependencies) {}
 
   /**
-   * 记录关闭时的设置后消费影子；设置读取失败时保留事件和影子供核对。
+   * 记录关闭时的设置后消费影子；设置读取失败时按自动归档关闭处理。
    * @param windowId 浏览器已明确关闭的窗口。
    */
   async onClosed(windowId: number): Promise<void> {
     try {
       const closedAt = Date.now();
       const sessionId = await this.dependencies.session.getSessionId();
-      let enabled: boolean | null = null;
+      let enabled = false;
       try {
         enabled = (await this.dependencies.settings.get()).autoArchiveClosedWindows;
       } catch (error: unknown) {
-        this.error = diagnosticFromError(error, 'diagnosticAutoArchiveSettings');
+        // 读取失败不应留下无法重试的提示；只在后台记录原因并沿用默认关闭状态。
+        console.warn('关闭时读取自动归档设置失败，按关闭处理', error);
       }
       const record: ClosedWindowRecord = {
         sessionId,
@@ -84,6 +85,8 @@ export class AutoArchiveService {
   async reconcile(): Promise<AutoArchiveStatus> {
     this.error = null;
     try {
+      // 旧版本留下的未知设置记录按关闭处理，使升级后不再持续显示待核对提示。
+      await this.dependencies.repository.requeueUnknownSettings();
       const pending = await this.dependencies.repository.pending();
       for (const record of pending) {
         try {

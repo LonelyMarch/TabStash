@@ -85,6 +85,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await db.delete();
+  vi.restoreAllMocks();
 });
 
 describe('自动归档关闭消费', () => {
@@ -224,15 +225,73 @@ describe('自动归档关闭消费', () => {
     expect(await archives.getShadow('s', 7)).toBeUndefined();
   });
 
-  it('关闭时设置读取失败不猜测开关，也不删除影子', async () => {
+  it('关闭时设置读取失败按自动归档关闭处理，不留下待核对提示', async () => {
     await archives.saveShadow(shadow());
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     dependencies.settings.get = async () => {
       throw new Error('读取设置失败');
     };
     await service.onClosed(7);
-    expect((await service.status()).reviewCount).toBe(1);
+    expect((await service.status()).reviewCount).toBe(0);
+    expect(await db.closedWindows.get(['s', 7])).toMatchObject({
+      enabled: false,
+      state: 'done',
+      outcome: 'disabled',
+    });
     expect(await archives.getArchives()).toEqual([]);
-    expect(await archives.getShadow('s', 7)).toBeDefined();
+    expect(await archives.getShadow('s', 7)).toBeUndefined();
+    expect(warning).toHaveBeenCalledOnce();
+  });
+
+  it('启动核对把旧版 enabled=null 的待核对记录按关闭处理', async () => {
+    await archives.saveShadow({
+      ...shadow(7, 'old'),
+      runtimeTabs: [{ key: 't', tabId: 81 }],
+    });
+    await closed.record({
+      sessionId: 'old',
+      windowId: 7,
+      closedAt: Date.now(),
+      enabled: null,
+      state: 'needs-review',
+    });
+    await db.pageProgress.put({
+      sessionId: 'old',
+      tabId: 81,
+      windowId: 7,
+      updatedAt: Date.now(),
+      progress: { url: 'https://example.com', scrolls: [], media: [] },
+    });
+    const result = await new AutoArchiveService(dependencies).reconcile();
+
+    expect(result).toMatchObject({ pendingCount: 0, reviewCount: 0, error: null });
+    expect(await db.closedWindows.get(['old', 7])).toMatchObject({
+      enabled: false,
+      state: 'done',
+      outcome: 'disabled',
+    });
+    expect(await archives.getShadow('old', 7)).toBeUndefined();
+    expect(await db.pageProgress.get(['old', 81])).toBeUndefined();
+    expect(await archives.getArchives()).toEqual([]);
+  });
+
+  it('旧版尚未消费的 enabled=null 记录也按关闭处理', async () => {
+    await closed.record({
+      sessionId: 'old',
+      windowId: 7,
+      closedAt: Date.now(),
+      enabled: null,
+      state: 'pending',
+    });
+
+    await service.reconcile();
+
+    expect(await db.closedWindows.get(['old', 7])).toMatchObject({
+      enabled: false,
+      state: 'done',
+      outcome: 'disabled',
+    });
+    expect((await service.status()).reviewCount).toBe(0);
   });
 
   it('缺少影子时标记待核对；只有旧会话影子不能冒充当前窗口', async () => {
