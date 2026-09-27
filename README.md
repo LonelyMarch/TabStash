@@ -54,7 +54,7 @@ pnpm build:chrome
 | Microsoft Edge | `edge://extensions` | `.output/edge-mv3` |
 | Google Chrome | `chrome://extensions` | `.output/chrome-mv3` |
 
-加载后点击工具栏中的 TabStash 图标打开侧栏。更新时重新构建并在扩展管理页点击**重新加载**。不要通过卸载重装来更新已有安装；浏览器可能清除该扩展的本地归档。开发目录与生产目录也可能对应不同的扩展 ID，数据不会自动迁移。
+加载后点击工具栏中的 TabStash 图标打开侧栏。修改开发版代码后，需重新构建并在扩展管理页点击重新加载才能载入新版本。归档保存在当前扩展实例的本地存储中，移除该实例可能清除数据。开发目录与生产目录可能对应不同的扩展 ID，各自的本地数据彼此独立。
 
 ## 使用说明
 
