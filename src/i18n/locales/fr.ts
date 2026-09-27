@@ -91,6 +91,7 @@ export const fr: Record<MessageKey, string> = {
   pendingClosed: '{count} fenêtres fermées en attente d’une nouvelle tentative.',
   reviewClosed: '{count} fenêtres fermées à vérifier (instantané manquant).',
   unknownError: 'Échec de l’opération. Réessayez ou consultez les outils de développement.',
+  diagnosticLegacy: '{detail}',
   diagnosticWindow: 'Fenêtre {id} : {detail}',
   diagnosticTab: 'Onglet « {title} » : {detail}',
   diagnosticGroup: 'Groupe « {title} » : {detail}',

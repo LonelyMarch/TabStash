@@ -90,6 +90,7 @@ export const ar: Record<MessageKey, string> = {
   pendingClosed: 'نوافذ مغلقة بانتظار إعادة المحاولة: {count}.',
   reviewClosed: 'نوافذ مغلقة تحتاج إلى مراجعة: {count} (اللقطة مفقودة).',
   unknownError: 'فشلت العملية. أعد المحاولة أو افحص أدوات مطوري الإضافة.',
+  diagnosticLegacy: '{detail}',
   diagnosticWindow: 'النافذة {id}: {detail}',
   diagnosticTab: 'علامة التبويب «{title}»: {detail}',
   diagnosticGroup: 'المجموعة «{title}»: {detail}',

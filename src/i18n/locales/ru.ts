@@ -91,6 +91,7 @@ export const ru: Record<MessageKey, string> = {
   pendingClosed: 'Закрытых окон для повторной попытки: {count}.',
   reviewClosed: 'Закрытых окон для проверки: {count} (нет снимка).',
   unknownError: 'Ошибка операции. Повторите попытку или проверьте инструменты разработчика.',
+  diagnosticLegacy: '{detail}',
   diagnosticWindow: 'Окно {id}: {detail}',
   diagnosticTab: 'Вкладка «{title}»: {detail}',
   diagnosticGroup: 'Группа «{title}»: {detail}',

@@ -91,6 +91,7 @@ export const es: Record<MessageKey, string> = {
   pendingClosed: '{count} ventanas cerradas pendientes de reintento.',
   reviewClosed: '{count} ventanas cerradas requieren revisión (falta una instantánea).',
   unknownError: 'La operación falló. Reintenta o consulta las herramientas de desarrollo.',
+  diagnosticLegacy: '{detail}',
   diagnosticWindow: 'Ventana {id}: {detail}',
   diagnosticTab: 'Pestaña «{title}»: {detail}',
   diagnosticGroup: 'Grupo «{title}»: {detail}',

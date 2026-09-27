@@ -225,25 +225,36 @@ describe('自动归档关闭消费', () => {
     expect(await archives.getShadow('s', 7)).toBeUndefined();
   });
 
-  it('关闭时设置读取失败按自动归档关闭处理，不留下待核对提示', async () => {
+  it('关闭时设置读取失败保留快照，重试读到 ON 后完成归档', async () => {
     await archives.saveShadow(shadow());
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     dependencies.settings.get = async () => {
       throw new Error('读取设置失败');
     };
     await service.onClosed(7);
-    expect((await service.status()).reviewCount).toBe(0);
+    expect(await service.status()).toMatchObject({
+      pendingCount: 1,
+      error: { key: 'diagnosticAutoArchiveSettings' },
+    });
     expect(await db.closedWindows.get(['s', 7])).toMatchObject({
-      enabled: false,
-      state: 'done',
-      outcome: 'disabled',
+      enabled: null,
+      state: 'pending',
     });
     expect(await archives.getArchives()).toEqual([]);
-    expect(await archives.getShadow('s', 7)).toBeUndefined();
+    expect(await archives.getShadow('s', 7)).toBeDefined();
     expect(warning).toHaveBeenCalledOnce();
+    dependencies.settings.get = async () => ({ autoArchiveClosedWindows: true });
+    expect(await new AutoArchiveService(dependencies).reconcile()).toMatchObject({
+      pendingCount: 0,
+      reviewCount: 0,
+      error: null,
+    });
+    expect((await db.closedWindows.get(['s', 7]))?.outcome).toBe('archived');
+    expect(await archives.getArchives()).toHaveLength(1);
+    expect(await archives.getShadow('s', 7)).toBeUndefined();
   });
 
-  it('启动核对把旧版 enabled=null 的待核对记录按关闭处理', async () => {
+  it('启动核对旧版未知设置时，重读到 OFF 后才清理快照', async () => {
     await archives.saveShadow({
       ...shadow(7, 'old'),
       runtimeTabs: [{ key: 't', tabId: 81 }],
@@ -262,6 +273,7 @@ describe('自动归档关闭消费', () => {
       updatedAt: Date.now(),
       progress: { url: 'https://example.com', scrolls: [], media: [] },
     });
+    enabled = false;
     const result = await new AutoArchiveService(dependencies).reconcile();
 
     expect(result).toMatchObject({ pendingCount: 0, reviewCount: 0, error: null });
@@ -275,7 +287,8 @@ describe('自动归档关闭消费', () => {
     expect(await archives.getArchives()).toEqual([]);
   });
 
-  it('旧版尚未消费的 enabled=null 记录也按关闭处理', async () => {
+  it('旧版尚未消费的未知设置记录在读取失败时继续保留', async () => {
+    await archives.saveShadow(shadow(7, 'old'));
     await closed.record({
       sessionId: 'old',
       windowId: 7,
@@ -284,14 +297,20 @@ describe('自动归档关闭消费', () => {
       state: 'pending',
     });
 
-    await service.reconcile();
+    dependencies.settings.get = async () => {
+      throw new Error('仍无法读取设置');
+    };
+    const result = await service.reconcile();
 
     expect(await db.closedWindows.get(['old', 7])).toMatchObject({
-      enabled: false,
-      state: 'done',
-      outcome: 'disabled',
+      enabled: null,
+      state: 'pending',
     });
-    expect((await service.status()).reviewCount).toBe(0);
+    expect(result).toMatchObject({
+      pendingCount: 1,
+      error: { key: 'diagnosticAutoArchiveSettings' },
+    });
+    expect(await archives.getShadow('old', 7)).toBeDefined();
   });
 
   it('缺少影子时标记待核对；只有旧会话影子不能冒充当前窗口', async () => {

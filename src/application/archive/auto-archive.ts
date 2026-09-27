@@ -22,19 +22,20 @@ export class AutoArchiveService {
   constructor(private readonly dependencies: Dependencies) {}
 
   /**
-   * 记录关闭时的设置后消费影子；设置读取失败时按自动归档关闭处理。
+   * 记录关闭事实及设置；设置暂时不可读时保留影子，等待重新核对。
    * @param windowId 浏览器已明确关闭的窗口。
    */
   async onClosed(windowId: number): Promise<void> {
     try {
       const closedAt = Date.now();
       const sessionId = await this.dependencies.session.getSessionId();
-      let enabled = false;
+      let enabled: boolean | null = null;
       try {
         enabled = (await this.dependencies.settings.get()).autoArchiveClosedWindows;
       } catch (error: unknown) {
-        // 读取失败不应留下无法重试的提示；只在后台记录原因并沿用默认关闭状态。
-        console.warn('关闭时读取自动归档设置失败，按关闭处理', error);
+        // 无法确认用户开关时不能删除唯一的窗口快照，保留关闭记录供重试。
+        console.warn('关闭时读取自动归档设置失败，等待重试', error);
+        this.error = diagnosticFromError(error, 'diagnosticAutoArchiveSettings');
       }
       const record: ClosedWindowRecord = {
         sessionId,
@@ -44,7 +45,7 @@ export class AutoArchiveService {
         state: 'pending',
       };
       await this.dependencies.repository.record(record);
-      await this.process(record);
+      if (enabled !== null) await this.process(record);
     } catch (error: unknown) {
       this.error = diagnosticFromError(error, 'diagnosticAutoArchiveFailed');
     }
@@ -56,6 +57,8 @@ export class AutoArchiveService {
    * @param record 等待核对的关闭事件。
    */
   private process(record: ClosedWindowRecord): Promise<void> {
+    // 未知开关值不进入消费事务，防止误记为 disabled 并清理影子。
+    if (record.enabled === null) return Promise.resolve();
     const key = `${record.sessionId}:${record.windowId}`;
     const existing = this.jobs.get(key);
     if (existing) return existing;
@@ -85,14 +88,26 @@ export class AutoArchiveService {
   async reconcile(): Promise<AutoArchiveStatus> {
     this.error = null;
     try {
-      // 旧版本留下的未知设置记录按关闭处理，使升级后不再持续显示待核对提示。
+      // 旧版本的未知设置记录重新排队，但在设置可读之前仍保留未知值和影子。
       await this.dependencies.repository.requeueUnknownSettings();
       const pending = await this.dependencies.repository.pending();
       for (const record of pending) {
         try {
-          await this.process(record);
+          let ready = record;
+          if (record.enabled === null) {
+            const enabled = (await this.dependencies.settings.get()).autoArchiveClosedWindows;
+            ready =
+              (await this.dependencies.repository.resolveUnknownSettings(record, enabled)) ??
+              record;
+          }
+          await this.process(ready);
         } catch (error: unknown) {
-          this.error = diagnosticFromError(error, 'diagnosticAutoArchiveRetry');
+          this.error = diagnosticFromError(
+            error,
+            record.enabled === null
+              ? 'diagnosticAutoArchiveSettings'
+              : 'diagnosticAutoArchiveRetry',
+          );
         }
       }
     } catch (error: unknown) {

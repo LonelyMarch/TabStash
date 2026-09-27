@@ -36,8 +36,8 @@ export class ClosedWindowRepository {
   /**
    * 把旧版本中因设置读取失败而停留在待核对状态的记录重新送入消费流程。
    *
-   * 在同一事务中把未知设置固定为关闭，随后复用正常关闭处理的去重、
-   * 操作回执核对及影子清理逻辑；缺少快照的记录不在本次修复范围内。
+   * 在同一事务中将未知设置记录重新排队，但保留 null 与影子；
+   * 只有设置重新读取成功，才确定是否自动归档并消费快照。
    *
    * @returns 本次重新排队的旧记录数量。
    */
@@ -47,11 +47,30 @@ export class ClosedWindowRepository {
       let requeued = 0;
       for (const record of reviews) {
         if (record.enabled !== null) continue;
-        // 保留关闭时刻和来源标识，只把无法确认的开关值改为用户指定的关闭策略。
-        await this.db.closedWindows.put({ ...record, enabled: false, state: 'pending' });
+        await this.db.closedWindows.put({ ...record, state: 'pending' });
         requeued += 1;
       }
       return requeued;
+    });
+  }
+
+  /**
+   * 在设置重新可读后确定未知关闭事件的开关值；不覆盖已经确认的历史决策。
+   * @param record 待核对的关闭事件身份。
+   * @param enabled 此次成功读取的自动归档设置。
+   * @returns 最新持久记录；记录已删除时返回 undefined。
+   */
+  async resolveUnknownSettings(
+    record: ClosedWindowRecord,
+    enabled: boolean,
+  ): Promise<ClosedWindowRecord | undefined> {
+    return this.db.transaction('rw', this.db.closedWindows, async () => {
+      const key: [string, number] = [record.sessionId, record.windowId];
+      const current = await this.db.closedWindows.get(key);
+      if (current?.state !== 'pending' || current.enabled !== null) return current;
+      const resolved = { ...current, enabled };
+      await this.db.closedWindows.put(resolved);
+      return resolved;
     });
   }
 
@@ -80,9 +99,8 @@ export class ClosedWindowRepository {
         const key: [string, number] = [sessionId, windowId];
         const record = await this.db.closedWindows.get(key);
         if (record?.state !== 'pending') return record;
-        // 兼容旧版本尚未消费的 null 记录，统一按自动归档关闭处理。
-        const enabled = record.enabled ?? false;
-        const normalizedRecord = record.enabled === null ? { ...record, enabled } : record;
+        // 未知设置必须留待重新读取；此处不能把 null 当作用户关闭开关。
+        if (record.enabled === null) return record;
         const shadow = await this.db.shadows.get(key);
         const receipts = await this.db.receipts.where('[sessionId+windowId]').equals(key).toArray();
         let duplicateId: string | undefined;
@@ -123,14 +141,14 @@ export class ClosedWindowRepository {
         let result: ClosedWindowRecord;
         if (duplicateId)
           result = {
-            ...normalizedRecord,
+            ...record,
             state: 'done',
             outcome: 'duplicate',
             archiveId: duplicateId,
           };
-        else if (!enabled) result = { ...normalizedRecord, state: 'done', outcome: 'disabled' };
+        else if (!record.enabled) result = { ...record, state: 'done', outcome: 'disabled' };
         else if (!shadow) {
-          result = { ...normalizedRecord, state: 'needs-review', outcome: 'missing-shadow' };
+          result = { ...record, state: 'needs-review', outcome: 'missing-shadow' };
         } else {
           const archiveId = crypto.randomUUID();
           const checkpoints = await this.db.pageProgress.bulkGet(
@@ -152,7 +170,7 @@ export class ClosedWindowRepository {
               record.closedAt + 2000,
             ),
           });
-          result = { ...normalizedRecord, state: 'done', outcome: 'archived', archiveId };
+          result = { ...record, state: 'done', outcome: 'archived', archiveId };
         }
         await this.db.closedWindows.put(result);
         if (result.state === 'done') {
