@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: 检出待审查版本
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 校验提交标题与发布来源
         shell: bash
