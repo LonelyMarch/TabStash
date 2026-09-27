@@ -20,7 +20,7 @@ export default defineConfig({
     name: 'TabStash',
     description: '__MSG_extensionDescription__',
     default_locale: 'en',
-    version: '0.1.0',
+    version: '0.1.1',
     minimum_chrome_version: '116',
     permissions: ['tabs', 'tabGroups', 'sidePanel', 'storage', 'favicon'],
     host_permissions: ['<all_urls>'],
