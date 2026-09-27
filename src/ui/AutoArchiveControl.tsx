@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { type Diagnostic, diagnosticFromError, translateDiagnostic } from '../i18n/core';
+import { useLanguage } from '../i18n/react';
 import { onMessage, sendMessage } from '../infrastructure/messaging/protocol';
 import { SettingSwitch } from './controls/SettingSwitch';
 
 /** 展示自动归档设置及待重试状态；只有持久化成功才改变开关展示值。 */
 export function AutoArchiveControl() {
+  const { locale, t } = useLanguage();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [status, setStatus] = useState('');
+  const [error, setError] = useState<Diagnostic | null>(null);
+  const [status, setStatus] = useState<{ pending: number; review: number }>({
+    pending: 0,
+    review: 0,
+  });
   const generation = useRef(0);
 
   /** @param retry 是否重试已有的持久关闭记录；普通通知仅读取状态。 */
@@ -16,7 +22,7 @@ export function AutoArchiveControl() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('自动归档状态读取超时')), 8000);
+        timer = setTimeout(() => reject(new Error('Auto archive status timed out')), 8000);
       });
       const [settings, result] = await Promise.race([
         Promise.all([
@@ -27,12 +33,11 @@ export function AutoArchiveControl() {
       ]);
       if (current !== generation.current) return;
       setEnabled(settings.autoArchiveClosedWindows);
-      setError(result.error ?? '');
-      setStatus(
-        `${result.pendingCount ? `${result.pendingCount} 个关闭记录待重试。` : ''}${result.reviewCount ? `${result.reviewCount} 个关闭记录需核对（设置未知或缺少快照）。` : ''}`,
-      );
+      setError(result.error);
+      setStatus({ pending: result.pendingCount, review: result.reviewCount });
     } catch (failure: unknown) {
-      if (current === generation.current) setError(String(failure));
+      if (current === generation.current)
+        setError(diagnosticFromError(failure, 'autoArchiveReadFailed'));
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
@@ -60,16 +65,16 @@ export function AutoArchiveControl() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('设置保存结果未确认，请重试读取状态')), 8000);
+        timer = setTimeout(() => reject(new Error('Settings update timed out')), 8000);
       });
       const saved = await Promise.race([
         sendMessage('updateSettings', { autoArchiveClosedWindows: value }),
         timeout,
       ]);
       setEnabled(saved.autoArchiveClosedWindows);
-      setError('');
+      setError(null);
     } catch (failure: unknown) {
-      setError(String(failure));
+      setError(diagnosticFromError(failure, 'autoArchiveSaveFailed'));
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       setBusy(false);
@@ -81,14 +86,16 @@ export function AutoArchiveControl() {
       <SettingSwitch
         checked={enabled ?? false}
         disabled={enabled === null || busy}
-        label="自动归档关闭的窗口"
+        label={t('autoArchiveClosed')}
         onCheckedChange={(value) => {
           void update(value);
         }}
       />
-      {error || status ? (
+      {error || status.pending || status.review ? (
         <div role="status" className="help-text">
-          {error} {status}
+          {error ? translateDiagnostic(locale, error) : null}{' '}
+          {status.pending ? t('pendingClosed', { count: status.pending }) : null}
+          {status.review ? t('reviewClosed', { count: status.review }) : null}
           <button
             type="button"
             className="refresh-button"
@@ -96,7 +103,7 @@ export function AutoArchiveControl() {
               void refresh(true);
             }}
           >
-            重试检查
+            {t('retryCheck')}
           </button>
         </div>
       ) : null}

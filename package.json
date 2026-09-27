@@ -1,6 +1,6 @@
 {
   "name": "tabstash",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:appearance": "playwright test tests/e2e/appearance.spec.ts",
+    "capture:readme": "node scripts/capture-readme-screenshots.mjs",
     "install:chrome-test": "node scripts/install-chrome-for-testing.mjs",
     "check:package": "node scripts/check-package.mjs",
     "zip": "wxt zip -b edge",

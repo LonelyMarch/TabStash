@@ -16,5 +16,7 @@ export async function closeWindowVerified(windowId: number, api: CloseWindowApi)
     // 允许正常异步关闭完成，但不重新发送关闭请求或操作浏览器确认界面。
     if (attempt < 19) await new Promise<void>((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error('浏览器尚未关闭目标窗口，请检查浏览器确认提示；归档已保留');
+  throw new AppError({ key: 'diagnosticCloseFailed' });
 }
+
+import { AppError } from '../../i18n/core';

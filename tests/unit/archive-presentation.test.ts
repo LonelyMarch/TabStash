@@ -12,13 +12,13 @@ describe('归档标题与排序', () => {
         { key: 'b', title: '  当前  ', url: null, index: 1, pinned: false },
       ],
     };
-    expect(archiveTitle(snapshot)).toBe('当前');
+    expect(archiveTitle(snapshot, '已归档窗口')).toBe('当前');
     snapshot.activeTabKey = 'missing';
-    expect(archiveTitle(snapshot)).toBe('首页');
+    expect(archiveTitle(snapshot, '已归档窗口')).toBe('首页');
     snapshot.tabs = snapshot.tabs.map((tab) => ({ ...tab, title: '' }));
-    expect(archiveTitle(snapshot)).toBe('example.com');
+    expect(archiveTitle(snapshot, '已归档窗口')).toBe('example.com');
     snapshot.tabs = [];
-    expect(archiveTitle(snapshot)).toBe('已归档窗口');
+    expect(archiveTitle(snapshot, '已归档窗口')).toBe('已归档窗口');
   });
 
   it('置顶优先，同状态按归档创建时间倒序且忽略置顶时间，不修改输入', () => {

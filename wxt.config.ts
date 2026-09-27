@@ -18,8 +18,9 @@ export default defineConfig({
   }),
   manifest: {
     name: 'TabStash',
-    description: '在侧栏管理窗口与标签页，本地归档并恢复窗口、标签组和标签页。',
-    version: '0.1.0',
+    description: '__MSG_extensionDescription__',
+    default_locale: 'en',
+    version: '0.1.1',
     minimum_chrome_version: '116',
     permissions: ['tabs', 'tabGroups', 'sidePanel', 'storage', 'favicon'],
     host_permissions: ['<all_urls>'],
@@ -30,7 +31,7 @@ export default defineConfig({
       128: 'icons/128.png',
     },
     action: {
-      default_title: '打开 TabStash 侧栏',
+      default_title: '__MSG_actionTitle__',
       default_icon: { 16: 'icons/16.png', 32: 'icons/32.png' },
     },
   },

@@ -34,6 +34,47 @@ export class ClosedWindowRepository {
   }
 
   /**
+   * 把旧版本中因设置读取失败而停留在待核对状态的记录重新送入消费流程。
+   *
+   * 在同一事务中将未知设置记录重新排队，但保留 null 与影子；
+   * 只有设置重新读取成功，才确定是否自动归档并消费快照。
+   *
+   * @returns 本次重新排队的旧记录数量。
+   */
+  async requeueUnknownSettings(): Promise<number> {
+    return this.db.transaction('rw', this.db.closedWindows, async () => {
+      const reviews = await this.db.closedWindows.where('state').equals('needs-review').toArray();
+      let requeued = 0;
+      for (const record of reviews) {
+        if (record.enabled !== null) continue;
+        await this.db.closedWindows.put({ ...record, state: 'pending' });
+        requeued += 1;
+      }
+      return requeued;
+    });
+  }
+
+  /**
+   * 在设置重新可读后确定未知关闭事件的开关值；不覆盖已经确认的历史决策。
+   * @param record 待核对的关闭事件身份。
+   * @param enabled 此次成功读取的自动归档设置。
+   * @returns 最新持久记录；记录已删除时返回 undefined。
+   */
+  async resolveUnknownSettings(
+    record: ClosedWindowRecord,
+    enabled: boolean,
+  ): Promise<ClosedWindowRecord | undefined> {
+    return this.db.transaction('rw', this.db.closedWindows, async () => {
+      const key: [string, number] = [record.sessionId, record.windowId];
+      const current = await this.db.closedWindows.get(key);
+      if (current?.state !== 'pending' || current.enabled !== null) return current;
+      const resolved = { ...current, enabled };
+      await this.db.closedWindows.put(resolved);
+      return resolved;
+    });
+  }
+
+  /**
    * 原子消费影子并核对对应关闭日志，只有全部持久化成功才清理影子。
    * @param sessionId 事件所属会话，不使用当前会话替换旧事件身份。
    * @param windowId 明确关闭的来源窗口。
@@ -58,11 +99,8 @@ export class ClosedWindowRepository {
         const key: [string, number] = [sessionId, windowId];
         const record = await this.db.closedWindows.get(key);
         if (record?.state !== 'pending') return record;
-        if (record.enabled === null) {
-          const review = { ...record, state: 'needs-review' as const };
-          await this.db.closedWindows.put(review);
-          return review;
-        }
+        // 未知设置必须留待重新读取；此处不能把 null 当作用户关闭开关。
+        if (record.enabled === null) return record;
         const shadow = await this.db.shadows.get(key);
         const receipts = await this.db.receipts.where('[sessionId+windowId]').equals(key).toArray();
         let duplicateId: string | undefined;
@@ -102,7 +140,12 @@ export class ClosedWindowRepository {
         }
         let result: ClosedWindowRecord;
         if (duplicateId)
-          result = { ...record, state: 'done', outcome: 'duplicate', archiveId: duplicateId };
+          result = {
+            ...record,
+            state: 'done',
+            outcome: 'duplicate',
+            archiveId: duplicateId,
+          };
         else if (!record.enabled) result = { ...record, state: 'done', outcome: 'disabled' };
         else if (!shadow) {
           result = { ...record, state: 'needs-review', outcome: 'missing-shadow' };

@@ -95,12 +95,12 @@ export function buildLiveTree(
     .map((window): LiveWindow => {
       const nodes: LiveNode[] = [];
       const createdGroups = new Map<number, LiveGroup>();
-      let activeTabTitle = '当前标签无标题';
+      let activeTabTitle = '';
 
       // 先复制再排序，保证传入的浏览器数据不被纯转换函数修改。
       const orderedTabs = [...window.tabs].sort((left, right) => left.index - right.index);
       for (const tab of orderedTabs) {
-        const title = tab.title?.trim() || tab.url?.trim() || '无标题标签页';
+        const title = tab.title?.trim() || tab.url?.trim() || '';
         const liveTab: LiveTab = {
           kind: 'tab',
           id: tab.id,
@@ -129,7 +129,7 @@ export function buildLiveTree(
             kind: 'group',
             id: sourceGroup.id,
             windowId: window.id,
-            title: sourceGroup.title?.trim() || '未命名标签组',
+            title: sourceGroup.title?.trim() || '',
             color: sourceGroup.color,
             browserCollapsed: sourceGroup.collapsed,
             tabs: [],

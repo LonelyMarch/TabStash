@@ -68,4 +68,5 @@ function icon(size) {
 }
 
 await mkdir('public/icons', { recursive: true });
-for (const size of [16, 32, 48, 128]) await writeFile(`public/icons/${size}.png`, icon(size));
+// 16/32/48/128 供 Manifest 与工具栏按钮使用；300 用于扩展商店列表与文档展示。
+for (const size of [16, 32, 48, 128, 300]) await writeFile(`public/icons/${size}.png`, icon(size));

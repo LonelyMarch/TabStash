@@ -6,6 +6,16 @@ import type { ArchivedWindow } from '../../src/domain/archive/models';
 
 const messages = vi.hoisted(() => ({ sendMessage: vi.fn() }));
 vi.mock('../../src/infrastructure/messaging/protocol', () => messages);
+vi.mock('../../src/i18n/react', async () => {
+  const { translate } = await import('../../src/i18n/core');
+  return {
+    useLanguage: () => ({
+      locale: 'zh-CN',
+      t: (key: Parameters<typeof translate>[1], params?: Record<string, string | number>) =>
+        translate('zh-CN', key, params),
+    }),
+  };
+});
 
 import { RestoreControls } from '../../src/ui/RestoreControls';
 
@@ -62,7 +72,7 @@ describe('归档操作按钮与直接删除', () => {
       archiveId: 'a',
       pinned: true,
     });
-    expect(notice).toHaveBeenCalledExactlyOnceWith('');
+    expect(notice).toHaveBeenCalledExactlyOnceWith(null);
   });
 
   it('点击删除直接提交，数据库失败时保留归档并展示错误', async () => {
@@ -72,13 +82,13 @@ describe('归档操作按钮与直接删除', () => {
       archiveId: 'a',
     });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(notice).toHaveBeenLastCalledWith('操作未完成确认：Error: 数据库不可用');
+    expect(notice).toHaveBeenLastCalledWith({ key: 'operationUnconfirmed' });
   });
 
   it('删除成功不显示结果横幅', async () => {
     messages.sendMessage.mockResolvedValue(true);
     await clickButton('删除归档');
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(notice).toHaveBeenCalledExactlyOnceWith('');
+    expect(notice).toHaveBeenCalledExactlyOnceWith(null);
   });
 });

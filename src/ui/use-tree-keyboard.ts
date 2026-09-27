@@ -95,6 +95,15 @@ export function useTreeKeyboard() {
       event.preventDefault();
       // 从独立折叠箭头进入时，把后续焦点固定到对应节点；折叠后也能继续导航。
       if (isNavigationKey && document.activeElement !== button) button.focus();
+      // 从右向左阅读时，物理左右键对应的展开与返回方向也需要镜像。
+      const navigationKey =
+        document.documentElement.dir === 'rtl'
+          ? event.key === 'ArrowLeft'
+            ? 'ArrowRight'
+            : event.key === 'ArrowRight'
+              ? 'ArrowLeft'
+              : event.key
+          : event.key;
       const action = navigateTree(
         buttons.map((node) => ({
           key: node.dataset.treeNode ?? '',
@@ -104,7 +113,7 @@ export function useTreeKeyboard() {
             : undefined,
         })),
         button.dataset.treeNode ?? '',
-        event.key,
+        navigationKey,
       );
       if (action.kind === 'focus') {
         buttons.find((node) => node.dataset.treeNode === action.key)?.focus();

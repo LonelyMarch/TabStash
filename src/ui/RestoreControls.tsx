@@ -2,13 +2,32 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { Pin, PinOff, RotateCcw, Trash2, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { ArchivedWindow, RestoreCommand, RestoreJob } from '../domain/archive/models';
+import { type Locale, translate, translateDiagnostic } from '../i18n/core';
+import type { MessageKey } from '../i18n/messages';
+import { useLanguage } from '../i18n/react';
 import { sendMessage } from '../infrastructure/messaging/protocol';
 
 /** @param result 持久恢复结果，区分标签创建数、结构失败与原归档是否移除。 */
-export function restoreResultText(result: RestoreJob): string {
+export function restoreResultText(result: RestoreJob, locale: Locale): string {
   const warnings = [...result.errors, ...(result.progressWarnings ?? [])];
-  return `已恢复 ${result.tabs.length}/${result.totalTabs} 个标签。${result.state === 'complete' ? (result.archiveRemoved ? '原归档已移除。' : '原归档保留。') : '未完整恢复，原归档保留。'}${warnings.length ? ` ${warnings.join('；')}` : ''}`;
+  const outcome =
+    result.state === 'complete'
+      ? result.archiveRemoved
+        ? 'archiveRemoved'
+        : 'archiveKept'
+      : 'incompleteRestore';
+  return translate(locale, 'restoredResult', {
+    done: result.tabs.length,
+    total: result.totalTabs,
+    outcome: translate(locale, outcome),
+    warnings: warnings.length
+      ? ` ${warnings.map((warning) => translateDiagnostic(locale, warning)).join(locale === 'zh-CN' ? '；' : '; ')}`
+      : '',
+  });
 }
+
+/** 即时反馈保留原始恢复结果或词条键，语言切换时可重新渲染。 */
+export type ArchiveNotice = { key: MessageKey } | { restore: RestoreJob } | null;
 
 /**
  * 归档行右侧的四个图标操作共用忙碌状态，避免同一行同时执行多个操作。
@@ -20,8 +39,9 @@ export function RestoreControls({
   onNotice,
 }: {
   archive: ArchivedWindow;
-  onNotice(message: string): void;
+  onNotice(notice: ArchiveNotice): void;
 }) {
+  const { t } = useLanguage();
   const archiveId = archive.id;
   const [busy, setBusy] = useState(false);
   const active = useRef(false);
@@ -31,7 +51,7 @@ export function RestoreControls({
   async function restore(removeAfterRestore: boolean): Promise<void> {
     if (active.current) return;
     if (pending.current && pending.current.removeAfterRestore !== removeAfterRestore) {
-      onNotice('上次结果尚未确认，请用原操作重试查询。');
+      onNotice({ key: 'restorePending' });
       return;
     }
     const command = pending.current ?? {
@@ -43,14 +63,11 @@ export function RestoreControls({
     active.current = true;
     setBusy(true);
     // 按钮的忙碌状态已表示操作进行中；顶部只保留需要用户处理的结果。
-    onNotice('');
+    onNotice(null);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('恢复仍未返回结果，可用原按钮重试查询，请勿重复发起新的恢复')),
-          60000,
-        );
+        timer = setTimeout(() => reject(new Error('Restore timed out')), 60000);
       });
       const result = await Promise.race([sendMessage('restoreArchive', command), timeout]);
       pending.current = undefined;
@@ -59,10 +76,11 @@ export function RestoreControls({
         result.errors.length > 0 ||
         result.progressWarnings?.length
       ) {
-        onNotice(restoreResultText(result));
+        onNotice({ restore: result });
       }
     } catch (error: unknown) {
-      onNotice(`恢复结果未确认：${String(error)}`);
+      console.error('Restore result unconfirmed', error);
+      onNotice({ key: 'restoreUnconfirmed' });
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       active.current = false;
@@ -78,11 +96,11 @@ export function RestoreControls({
     if (active.current) return;
     active.current = true;
     setBusy(true);
-    onNotice('');
+    onNotice(null);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('操作结果未确认，请刷新列表后重试')), 8000);
+        timer = setTimeout(() => reject(new Error('Archive action timed out')), 8000);
       });
       await Promise.race([
         deleting
@@ -91,7 +109,8 @@ export function RestoreControls({
         timeout,
       ]);
     } catch (error: unknown) {
-      onNotice(`操作未完成确认：${String(error)}`);
+      console.error('Archive action unconfirmed', error);
+      onNotice({ key: 'operationUnconfirmed' });
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       active.current = false;
@@ -103,13 +122,13 @@ export function RestoreControls({
   const actions = [
     {
       key: 'restore',
-      label: '恢复',
+      label: t('restore'),
       icon: <RotateCcw aria-hidden="true" size={15} />,
       run: () => void restore(false),
     },
     {
       key: 'restore-remove',
-      label: '恢复并移除',
+      label: t('restoreAndRemove'),
       icon: (
         <span aria-hidden="true" className="restore-remove-icon">
           <RotateCcw size={15} />
@@ -120,7 +139,7 @@ export function RestoreControls({
     },
     {
       key: 'pin',
-      label: archive.pinned ? '取消置顶' : '置顶',
+      label: archive.pinned ? t('unpin') : t('pin'),
       icon: archive.pinned ? (
         <PinOff aria-hidden="true" size={15} />
       ) : (
@@ -130,7 +149,7 @@ export function RestoreControls({
     },
     {
       key: 'delete',
-      label: '删除归档',
+      label: t('deleteArchive'),
       icon: <Trash2 aria-hidden="true" size={15} />,
       run: () => void manage(true),
     },
@@ -158,7 +177,7 @@ export function RestoreControls({
                 </Tooltip.Trigger>
                 <Tooltip.Portal>
                   <Tooltip.Content className="action-tooltip" sideOffset={4}>
-                    {busy ? '正在处理…' : action.key === 'delete' ? '删除' : action.label}
+                    {busy ? t('processing') : action.key === 'delete' ? t('delete') : action.label}
                   </Tooltip.Content>
                 </Tooltip.Portal>
               </Tooltip.Root>

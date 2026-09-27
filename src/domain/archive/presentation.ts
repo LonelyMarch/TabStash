@@ -3,8 +3,9 @@ import type { ArchivedWindow, WindowSnapshot } from './models';
 /**
  * 按活动标签标题、首个有效标题、主机名、默认文案生成归档名称。
  * @param snapshot 已保存的快照，不读取当前浏览器状态。
+ * @param fallback 无可用标题时由界面传入当前语言的默认名称。
  */
-export function archiveTitle(snapshot: WindowSnapshot): string {
+export function archiveTitle(snapshot: WindowSnapshot, fallback: string): string {
   const activeTitle = snapshot.tabs.find((tab) => tab.key === snapshot.activeTabKey)?.title.trim();
   if (activeTitle) return activeTitle;
   const tabs = [...snapshot.tabs].sort((a, b) => a.index - b.index);
@@ -17,7 +18,7 @@ export function archiveTitle(snapshot: WindowSnapshot): string {
       /* 内部页或缺失 URL 没有主机名，继续检查下一项。 */
     }
   }
-  return '已归档窗口';
+  return fallback;
 }
 
 /**

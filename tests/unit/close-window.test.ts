@@ -10,7 +10,7 @@ describe('关闭窗口结果核对', () => {
       remove: vi.fn().mockResolvedValue(undefined),
       getAll: vi.fn().mockResolvedValue([{ id: 7 }]),
     };
-    const result = expect(closeWindowVerified(7, api)).rejects.toThrow('尚未关闭');
+    const result = expect(closeWindowVerified(7, api)).rejects.toThrow('diagnosticCloseFailed');
     await vi.runAllTimersAsync();
     await result;
     expect(api.remove).toHaveBeenCalledTimes(1);

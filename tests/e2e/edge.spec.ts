@@ -228,7 +228,7 @@ test('Edge 归档全链路、后台重启及浏览器重启持久化', async ({}
     const stored = await readRecords('archives');
     const latest = Math.max(...stored.map((row) => Number(row.archivedAt)));
     await expect(rows.nth(0).locator('small')).toContainText(
-      new Date(latest).toLocaleString('zh-CN'),
+      new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(latest),
     );
 
     await rows.nth(0).getByRole('button', { name: '恢复', exact: true }).click();

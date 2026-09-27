@@ -1,3 +1,4 @@
+import type { Diagnostic } from '../../i18n/core';
 import type { GroupColor } from '../window/live-tree';
 
 /** 页面内滚动位置；document 表示主滚动区域，其余路径只描述 DOM 结构。 */
@@ -129,7 +130,7 @@ export interface SnapshotStatus {
   windowCount: number;
   savedWindowCount: number;
   latestSavedAt: number | null;
-  errors: string[];
+  errors: Diagnostic[];
 }
 
 /** 同一次用户操作的稳定请求 ID，用于跨消息重试去重。 */
@@ -145,7 +146,7 @@ export interface ArchiveReceipt extends ArchiveCommand {
   archiveId: string;
   savedAt: number;
   outcome: 'saved' | 'closed' | 'close-failed';
-  warning?: string;
+  warning?: Diagnostic;
 }
 
 /** 持久关闭事件记录：先记关闭事实及当时开关，再消费影子，防止重启后重复或改变决策。 */
@@ -163,7 +164,7 @@ export interface ClosedWindowRecord {
 export interface AutoArchiveStatus {
   pendingCount: number;
   reviewCount: number;
-  error: string | null;
+  error: Diagnostic | null;
 }
 
 /** 恢复请求以稳定 ID 去重；新点击可创建新请求，消息重试不能重复创建窗口。 */
@@ -189,7 +190,7 @@ export interface RestoreJob extends RestoreCommand {
   tabs: RestoredIdentity[];
   groups: RestoredIdentity[];
   totalTabs: number;
-  errors: string[];
-  progressWarnings?: string[];
+  errors: Diagnostic[];
+  progressWarnings?: Diagnostic[];
   archiveRemoved: boolean;
 }

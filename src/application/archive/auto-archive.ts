@@ -1,4 +1,5 @@
 import type { AutoArchiveStatus, ClosedWindowRecord } from '../../domain/archive/models';
+import { type Diagnostic, diagnosticFromError } from '../../i18n/core';
 import type { ClosedWindowRepository } from '../../infrastructure/db/closed-windows';
 import type { CloseSuppression, SessionStore } from '../../infrastructure/storage/session';
 import type { SettingsStore } from '../../infrastructure/storage/settings';
@@ -14,14 +15,14 @@ interface Dependencies {
 
 /** 自动归档只处理已记录的关闭事实；不会主动关闭窗口或从旧 runtime ID 重放操作。 */
 export class AutoArchiveService {
-  private error: string | null = null;
+  private error: Diagnostic | null = null;
   private readonly jobs = new Map<string, Promise<void>>();
 
   /** @param dependencies 关闭事件仓储、设置、会话与后台任务协调器。 */
   constructor(private readonly dependencies: Dependencies) {}
 
   /**
-   * 记录关闭时的设置后消费影子；设置读取失败时保留事件和影子供核对。
+   * 记录关闭事实及设置；设置暂时不可读时保留影子，等待重新核对。
    * @param windowId 浏览器已明确关闭的窗口。
    */
   async onClosed(windowId: number): Promise<void> {
@@ -32,7 +33,9 @@ export class AutoArchiveService {
       try {
         enabled = (await this.dependencies.settings.get()).autoArchiveClosedWindows;
       } catch (error: unknown) {
-        this.error = `关闭时无法读取自动归档设置：${String(error)}`;
+        // 无法确认用户开关时不能删除唯一的窗口快照，保留关闭记录供重试。
+        console.warn('关闭时读取自动归档设置失败，等待重试', error);
+        this.error = diagnosticFromError(error, 'diagnosticAutoArchiveSettings');
       }
       const record: ClosedWindowRecord = {
         sessionId,
@@ -42,9 +45,9 @@ export class AutoArchiveService {
         state: 'pending',
       };
       await this.dependencies.repository.record(record);
-      await this.process(record);
+      if (enabled !== null) await this.process(record);
     } catch (error: unknown) {
-      this.error = `自动归档失败：${String(error)}`;
+      this.error = diagnosticFromError(error, 'diagnosticAutoArchiveFailed');
     }
     this.dependencies.changed();
   }
@@ -54,6 +57,8 @@ export class AutoArchiveService {
    * @param record 等待核对的关闭事件。
    */
   private process(record: ClosedWindowRecord): Promise<void> {
+    // 未知开关值不进入消费事务，防止误记为 disabled 并清理影子。
+    if (record.enabled === null) return Promise.resolve();
     const key = `${record.sessionId}:${record.windowId}`;
     const existing = this.jobs.get(key);
     if (existing) return existing;
@@ -83,16 +88,30 @@ export class AutoArchiveService {
   async reconcile(): Promise<AutoArchiveStatus> {
     this.error = null;
     try {
+      // 旧版本的未知设置记录重新排队，但在设置可读之前仍保留未知值和影子。
+      await this.dependencies.repository.requeueUnknownSettings();
       const pending = await this.dependencies.repository.pending();
       for (const record of pending) {
         try {
-          await this.process(record);
+          let ready = record;
+          if (record.enabled === null) {
+            const enabled = (await this.dependencies.settings.get()).autoArchiveClosedWindows;
+            ready =
+              (await this.dependencies.repository.resolveUnknownSettings(record, enabled)) ??
+              record;
+          }
+          await this.process(ready);
         } catch (error: unknown) {
-          this.error = `自动归档待重试：${String(error)}`;
+          this.error = diagnosticFromError(
+            error,
+            record.enabled === null
+              ? 'diagnosticAutoArchiveSettings'
+              : 'diagnosticAutoArchiveRetry',
+          );
         }
       }
     } catch (error: unknown) {
-      this.error = `关闭记录读取失败：${String(error)}`;
+      this.error = diagnosticFromError(error, 'diagnosticClosedRead');
     }
     this.dependencies.changed();
     return this.status();

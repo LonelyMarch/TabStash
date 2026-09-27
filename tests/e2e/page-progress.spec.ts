@@ -123,10 +123,12 @@ for (const browserKind of ['edge', 'chrome'] as const) {
               ).trim(),
             }),
         headless: false,
+        locale: 'zh-CN',
         viewport: { width: 390, height: 844 },
         args: [
           `--disable-extensions-except=${resolve(`.output/${browserKind}-mv3`)}`,
           `--load-extension=${resolve(`.output/${browserKind}-mv3`)}`,
+          '--lang=zh-CN',
           '--no-first-run',
         ],
       });

@@ -29,7 +29,7 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
-  text-align: left;
+  text-align: start;
 }
 
 .disclosure-button:focus-visible,
@@ -58,7 +58,8 @@
   flex: 1;
   align-items: center;
   gap: 7px;
-  padding: 3px 7px 3px 0;
+  padding-block: 3px;
+  padding-inline: 0 7px;
 }
 
 .window-marker {
@@ -112,11 +113,11 @@
 
 .window-children {
   /* 实时窗口与归档窗口共用层级缩进，保持两棵树的视觉深度一致。 */
-  margin-left: 20px;
+  margin-inline-start: 20px;
 }
 
 .group-children {
-  margin-left: 20px;
+  margin-inline-start: 20px;
 }
 
 .group-row,
@@ -133,7 +134,7 @@
 }
 
 .group-row {
-  padding-left: 4px;
+  padding-inline-start: 4px;
   font-weight: 600;
 }
 
@@ -147,7 +148,13 @@
 }
 
 .tab-row.grouped {
-  padding-left: 9px;
+  padding-inline-start: 9px;
+}
+
+/* 右向展开图标在阿拉伯语界面中指向阅读方向的内侧。 */
+:root[dir="rtl"] .disclosure-button .lucide-chevron-right,
+:root[dir="rtl"] .group-row .lucide-chevron-right {
+  transform: scaleX(-1);
 }
 
 .node-title {

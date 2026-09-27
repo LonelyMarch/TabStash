@@ -1,26 +1,30 @@
 import { ChevronDown, ChevronRight, Pin } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
-import type { ArchiveCommand, ArchivedWindow } from '../../src/domain/archive/models';
+import type {
+  ArchiveCommand,
+  ArchivedWindow,
+  SnapshotStatus,
+} from '../../src/domain/archive/models';
 import { adjacentWindowId } from '../../src/domain/window/adjacent-window';
 import type { LiveGroup, LiveTab, LiveWindow } from '../../src/domain/window/live-tree';
+import { type Diagnostic, diagnosticFromError, translateDiagnostic } from '../../src/i18n/core';
+import type { MessageKey } from '../../src/i18n/messages';
+import { useLanguage } from '../../src/i18n/react';
 import { onMessage, sendMessage } from '../../src/infrastructure/messaging/protocol';
 import { ArchiveActions } from '../../src/ui/ArchiveActions';
 import { ArchiveList } from '../../src/ui/ArchiveList';
 import { AutoArchiveControl } from '../../src/ui/AutoArchiveControl';
 import { AppearanceControl } from '../../src/ui/appearance/AppearanceControl';
 import { SettingSwitch } from '../../src/ui/controls/SettingSwitch';
+import { LanguageControl } from '../../src/ui/language/LanguageControl';
 import { TabIcon } from '../../src/ui/TabIcon';
 import { useTreeKeyboard } from '../../src/ui/use-tree-keyboard';
 
-/**
- * 将未知的浏览器 API 或消息错误转换为可显示的文本。
- *
- * @param error 浏览器 API 或 Background 抛出的值。
- * @returns 便于用户反馈的错误描述。
- */
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+interface Notice {
+  key: MessageKey;
+  params?: Record<string, string | number>;
+  urgent: boolean;
 }
 
 /**
@@ -43,10 +47,11 @@ function TabRow({
   parentKey: string;
   onActivate: (tab: LiveTab) => Promise<void>;
 }) {
+  const { t } = useLanguage();
   return (
     <button
       aria-current={tab.active ? 'page' : undefined}
-      aria-label={`${tab.title}${tab.pinned ? '，已固定' : ''}`}
+      aria-label={`${tab.title || t('untitledTab')}${tab.pinned ? t('pinned') : ''}`}
       className={`tab-row${grouped ? ' grouped' : ''}${tab.active ? ' active' : ''}`}
       data-tree-node={`tab-${tab.id}`}
       data-tree-parent={parentKey}
@@ -59,10 +64,10 @@ function TabRow({
       <TabIcon
         favIconUrl={tab.favIconUrl}
         key={`${tab.url ?? 'missing'}|${tab.title}|${tab.favIconUrl ?? 'missing'}`}
-        title={tab.title}
+        title={tab.title || t('untitledTab')}
         url={tab.url}
       />
-      <span className="node-title">{tab.title}</span>
+      <span className="node-title">{tab.title || t('untitledTab')}</span>
       {tab.pinned ? <Pin aria-hidden="true" className="pinned-icon" size={12} /> : null}
     </button>
   );
@@ -76,21 +81,30 @@ function TabRow({
  * @returns 当前窗口树及 Phase 0 已验证的跨窗口快捷键界面。
  */
 export default function App() {
+  const { locale, t } = useLanguage();
   const [windows, setWindows] = useState<LiveWindow[]>([]);
   const [panelWindowId, setPanelWindowId] = useState<number | null>(null);
   const [lastFocusedWindowId, setLastFocusedWindowId] = useState<number | null>(null);
   const [openTargetPanel, setOpenTargetPanel] = useState(true);
   const [expandedWindows, setExpandedWindows] = useState<Record<number, boolean>>({});
   const [expandedGroups, setExpandedGroups] = useState<Record<number, boolean>>({});
-  const [message, setMessage] = useState('正在读取浏览器窗口…');
-  const [storageMessage, setStorageMessage] = useState('正在检查本地存储…');
-  const [snapshotMessage, setSnapshotMessage] = useState('正在保存窗口快照…');
+  const [message, setMessage] = useState<Notice | null>({ key: 'loadingWindows', urgent: true });
+  const [storageMessage, setStorageMessage] = useState<Notice | null>({
+    key: 'loadingStorage',
+    urgent: true,
+  });
+  const [snapshotMessage, setSnapshotMessage] = useState<Notice | null>({
+    key: 'loadingSnapshots',
+    urgent: true,
+  });
+  const [snapshotState, setSnapshotState] = useState<SnapshotStatus | null>(null);
+  const [archiveWarning, setArchiveWarning] = useState<Diagnostic | null>(null);
   const snapshotGeneration = useRef(0);
   const refreshGeneration = useRef(0);
   const storageGeneration = useRef(0);
   const { treeRef, controlsRef, controlsMode } = useTreeKeyboard();
   const [archivedWindows, setArchivedWindows] = useState<ArchivedWindow[]>([]);
-  const [archiveError, setArchiveError] = useState('正在读取归档…');
+  const [archiveError, setArchiveError] = useState<Diagnostic | null>({ key: 'loadingArchives' });
   const [busyWindows, setBusyWindows] = useState<Set<number>>(new Set());
   const pendingArchives = useRef(new Map<number, ArchiveCommand>());
   const activeArchives = useRef(new Set<number>());
@@ -105,7 +119,10 @@ export default function App() {
         if (mounted && currentWindow.id !== undefined) setPanelWindowId(currentWindow.id);
       })
       .catch((error: unknown) => {
-        if (mounted) setMessage(`无法识别侧栏所在窗口：${describeError(error)}`);
+        if (mounted) {
+          console.error('Could not identify panel window', error);
+          setMessage({ key: 'panelWindowUnknown', urgent: true });
+        }
       });
     return () => {
       mounted = false;
@@ -118,15 +135,15 @@ export default function App() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('归档列表读取超时，请刷新重试')), 8000);
+        timer = setTimeout(() => reject(new Error('Archive read timed out')), 8000);
       });
       const data = await Promise.race([sendMessage('getArchives'), timeout]);
       if (generation !== archiveGeneration.current) return;
       setArchivedWindows(data);
-      setArchiveError('');
+      setArchiveError(null);
     } catch (error: unknown) {
       if (generation === archiveGeneration.current)
-        setArchiveError(`归档读取失败：${describeError(error)}`);
+        setArchiveError(diagnosticFromError(error, 'archiveReadFailed'));
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
@@ -141,23 +158,20 @@ export default function App() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('快照检查超时，请点击刷新重试')), 8000);
+        timer = setTimeout(() => reject(new Error('Snapshot check timed out')), 8000);
       });
       const status = await Promise.race([
         recapture ? sendMessage('refreshSnapshots') : sendMessage('getSnapshotStatus'),
         timeout,
       ]);
       if (generation !== snapshotGeneration.current) return;
-      const savedAt =
-        status.latestSavedAt === null
-          ? ''
-          : ` · 最近保存 ${new Date(status.latestSavedAt).toLocaleTimeString()}`;
-      setSnapshotMessage(
-        `窗口快照 ${status.savedWindowCount}/${status.windowCount}${savedAt}${status.errors.length ? ` · 更新失败：${status.errors.join('；')}` : ''}`,
-      );
+      setSnapshotState(status);
+      setSnapshotMessage(null);
     } catch (error: unknown) {
-      if (generation === snapshotGeneration.current)
-        setSnapshotMessage(`窗口快照未就绪：${describeError(error)}`);
+      if (generation === snapshotGeneration.current) {
+        console.error('Snapshot status unavailable', error);
+        setSnapshotMessage({ key: 'snapshotUnavailable', urgent: true });
+      }
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
@@ -184,16 +198,15 @@ export default function App() {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('存储检查超时，请点击刷新重试')), 8000);
+        timeoutId = setTimeout(() => reject(new Error('Storage check timed out')), 8000);
       });
-      const status = await Promise.race([sendMessage('getPersistenceStatus'), timeout]);
+      await Promise.race([sendMessage('getPersistenceStatus'), timeout]);
       if (generation !== storageGeneration.current) return;
-      setStorageMessage(
-        `本地存储就绪 · ${status.archiveCount} 个归档${status.pendingOperationCount ? ` · ${status.pendingOperationCount} 个操作待核对` : ''}`,
-      );
+      setStorageMessage(null);
     } catch (error: unknown) {
       if (generation === storageGeneration.current) {
-        setStorageMessage(`本地存储不可用：${describeError(error)}`);
+        console.error('Local storage unavailable', error);
+        setStorageMessage({ key: 'storageUnavailable', urgent: true });
       }
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
@@ -221,7 +234,7 @@ export default function App() {
     if (activeArchives.current.has(windowId)) return;
     const previous = pendingArchives.current.get(windowId);
     if (previous && previous.closeAfterArchive !== closeAfterArchive) {
-      setMessage('上次归档结果尚未确认，请先点击原操作按钮重试。');
+      setMessage({ key: 'archiveBusyUnconfirmed', urgent: true });
       return;
     }
     const command = previous ?? { requestId: crypto.randomUUID(), windowId, closeAfterArchive };
@@ -229,25 +242,26 @@ export default function App() {
     activeArchives.current.add(windowId);
     setBusyWindows(new Set(activeArchives.current));
     // 忙碌状态由窗口行按钮展示；不要在列表上方临时插入状态块，以免整栏跳动。
-    setMessage('');
+    setMessage(null);
+    setArchiveWarning(null);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('归档结果等待超时，可用同一按钮重试查询')),
-          15000,
-        );
+        timer = setTimeout(() => reject(new Error('Archive result timed out')), 15000);
       });
       const result = await Promise.race([sendMessage('archiveWindow', command), timeout]);
       pendingArchives.current.delete(windowId);
+      setArchiveWarning(result.warning ?? null);
       setMessage(
-        result.warning ??
-          (result.outcome === 'closed' ? '已归档并关闭窗口。' : '已归档，原窗口保持打开。'),
+        result.warning
+          ? null
+          : { key: result.outcome === 'closed' ? 'archivedClosed' : 'archivedOpen', urgent: false },
       );
       void refreshArchives();
       void refreshStorageStatus();
     } catch (error: unknown) {
-      setMessage(`归档请求未完成确认：${describeError(error)}`);
+      console.error('Archive result unconfirmed', error);
+      setMessage({ key: 'archiveUnconfirmed', urgent: true });
     } finally {
       if (timer !== undefined) clearTimeout(timer);
       activeArchives.current.delete(windowId);
@@ -274,7 +288,7 @@ export default function App() {
       // 后台异常或消息端口失效时，不能让界面无限停留在“正在读取”。
       const timeout = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
-          reject(new Error('Background 在 8 秒内没有返回窗口数据，请重新加载扩展后重试'));
+          reject(new Error('Background window read timed out'));
         }, 8000);
       });
       const latestWindows = await Promise.race([sendMessage('getLiveWindows'), timeout]);
@@ -287,13 +301,14 @@ export default function App() {
       // 工具栏弹窗会暂时让普通窗口全部失焦；仅观察到另一个普通窗口时更新记忆。
       if (focusedWindow) setLastFocusedWindowId(focusedWindow.id);
       setMessage((previous) =>
-        previous === '正在读取浏览器窗口…'
-          ? `已读取 ${latestWindows.length} 个普通窗口。`
+        previous?.key === 'loadingWindows'
+          ? { key: 'windowsRead', params: { count: latestWindows.length }, urgent: false }
           : previous,
       );
     } catch (error: unknown) {
       if (generation === refreshGeneration.current) {
-        setMessage(`读取窗口失败：${describeError(error)}`);
+        console.error('Could not read windows', error);
+        setMessage({ key: 'windowsReadFailed', urgent: true });
       }
     } finally {
       if (timeoutId !== undefined) {
@@ -358,15 +373,17 @@ export default function App() {
       const [panelResult, focusResult] = await Promise.allSettled([panelRequest, focusRequest]);
 
       if (focusResult.status === 'rejected') {
-        setMessage(`聚焦窗口失败：${describeError(focusResult.reason)}`);
+        console.error('Could not focus window', focusResult.reason);
+        setMessage({ key: 'focusFailed', urgent: true });
         return;
       }
       if (panelResult.status === 'rejected') {
-        setMessage(`窗口已聚焦，但打开侧栏失败：${describeError(panelResult.reason)}`);
+        console.error('Could not open target panel', panelResult.reason);
+        setMessage({ key: 'panelOpenFailed', urgent: true });
         return;
       }
 
-      setMessage('已切换窗口。');
+      setMessage({ key: 'switchedWindow', urgent: false });
       await refreshLiveWindows();
     },
     [refreshLiveWindows, requestTargetPanel],
@@ -390,19 +407,22 @@ export default function App() {
       ]);
 
       if (activationResult.status === 'rejected') {
-        setMessage(`激活标签失败：${describeError(activationResult.reason)}`);
+        console.error('Could not activate tab', activationResult.reason);
+        setMessage({ key: 'activateFailed', urgent: true });
         return;
       }
       if (focusResult.status === 'rejected') {
-        setMessage(`标签已激活，但聚焦窗口失败：${describeError(focusResult.reason)}`);
+        console.error('Could not focus activated tab window', focusResult.reason);
+        setMessage({ key: 'activateFocusFailed', urgent: true });
         return;
       }
       if (panelResult.status === 'rejected') {
-        setMessage(`标签已激活，但打开侧栏失败：${describeError(panelResult.reason)}`);
+        console.error('Could not open activated tab panel', panelResult.reason);
+        setMessage({ key: 'activatePanelFailed', urgent: true });
         return;
       }
 
-      setMessage(`已激活：${tab.title}`);
+      setMessage({ key: 'activated', params: { title: tab.title }, urgent: false });
       await refreshLiveWindows();
     },
     [refreshLiveWindows, requestTargetPanel],
@@ -457,7 +477,7 @@ export default function App() {
         event.shiftKey ? -1 : 1,
       );
       if (targetId === undefined) {
-        setMessage('至少需要两个普通窗口才能切换。');
+        setMessage({ key: 'needTwoWindows', urgent: true });
         return;
       }
       void switchToWindow(targetId);
@@ -492,10 +512,19 @@ export default function App() {
     }));
   }
 
-  // 常规诊断信息不占用界面；错误和进行中操作仍在窗口树前直接显示。
-  const immediateStatuses = [message, storageMessage, snapshotMessage].filter((value) =>
-    /失败|未就绪|不可用|超时|未完成|未确认|需核对|正在/.test(value),
-  );
+  // 用结构化状态决定是否占用界面，不依赖任何特定语言的词句。
+  const immediateStatuses = [message, storageMessage, snapshotMessage]
+    .filter((value): value is Notice => value?.urgent === true)
+    .map((value) => t(value.key, value.params));
+  if (archiveWarning) immediateStatuses.push(translateDiagnostic(locale, archiveWarning));
+  if (snapshotState?.errors.length)
+    immediateStatuses.push(
+      t('updateFailed', {
+        errors: snapshotState.errors
+          .map((error) => translateDiagnostic(locale, error))
+          .join(locale === 'zh-CN' ? '；' : '; '),
+      }),
+    );
 
   return (
     <main className="panel">
@@ -508,7 +537,7 @@ export default function App() {
 
       <section aria-labelledby="window-heading" className="window-section">
         <div className="section-heading">
-          <h2 id="window-heading">当前窗口</h2>
+          <h2 id="window-heading">{t('currentWindows')}</h2>
           <div className="section-actions">
             <span className="section-count">{windows.length}</span>
             <button
@@ -521,13 +550,13 @@ export default function App() {
               }}
               type="button"
             >
-              刷新
+              {t('refresh')}
             </button>
           </div>
         </div>
         <div className="window-list" ref={treeRef}>
           {windows.length === 0 ? (
-            <p className="empty-state">未读取到普通窗口。</p>
+            <p className="empty-state">{t('noWindows')}</p>
           ) : (
             windows.map((liveWindow, index) => {
               const windowExpanded =
@@ -540,7 +569,9 @@ export default function App() {
                   >
                     <button
                       aria-expanded={windowExpanded}
-                      aria-label={`${windowExpanded ? '折叠' : '展开'}窗口 ${index + 1}`}
+                      aria-label={t(windowExpanded ? 'collapseWindow' : 'expandWindow', {
+                        index: index + 1,
+                      })}
                       className="disclosure-button"
                       data-tree-toggle="true"
                       data-tree-owner={`window-${liveWindow.id}`}
@@ -550,7 +581,10 @@ export default function App() {
                       {windowExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
                     <button
-                      aria-label={`切换到窗口 ${index + 1}，${liveWindow.tabCount} 个标签页`}
+                      aria-label={t('switchWindow', {
+                        index: index + 1,
+                        count: liveWindow.tabCount,
+                      })}
                       aria-expanded={windowExpanded}
                       className="window-target"
                       data-tree-node={`window-${liveWindow.id}`}
@@ -561,8 +595,10 @@ export default function App() {
                     >
                       <span aria-hidden="true" className="window-marker" />
                       <span className="window-copy">
-                        <strong>窗口 {index + 1}</strong>
-                        <small title={liveWindow.activeTabTitle}>{liveWindow.activeTabTitle}</small>
+                        <strong>{t('window', { index: index + 1 })}</strong>
+                        <small title={liveWindow.activeTabTitle || t('currentTabUntitled')}>
+                          {liveWindow.activeTabTitle || t('currentTabUntitled')}
+                        </small>
                       </span>
                       <span className="tab-count">{liveWindow.tabCount}</span>
                     </button>
@@ -594,7 +630,9 @@ export default function App() {
                           <div className="group-block" key={`group-${node.id}`}>
                             <button
                               aria-expanded={groupExpanded}
-                              aria-label={`${groupExpanded ? '折叠' : '展开'}标签组 ${node.title}`}
+                              aria-label={t(groupExpanded ? 'collapseGroup' : 'expandGroup', {
+                                title: node.title || t('untitledGroup'),
+                              })}
                               className="group-row"
                               data-tree-node={`group-${node.id}`}
                               data-tree-parent={`window-${liveWindow.id}`}
@@ -607,7 +645,7 @@ export default function App() {
                                 <ChevronRight size={14} />
                               )}
                               <span aria-hidden="true" className={`group-dot ${node.color}`} />
-                              <span className="node-title">{node.title}</span>
+                              <span className="node-title">{node.title || t('untitledGroup')}</span>
                               <span className="tab-count">{node.tabs.length}</span>
                             </button>
                             {groupExpanded ? (
@@ -635,19 +673,26 @@ export default function App() {
         </div>
       </section>
 
-      <ArchiveList archives={archivedWindows} error={archiveError} />
+      <ArchiveList
+        archives={archivedWindows}
+        error={archiveError ? translateDiagnostic(locale, archiveError) : ''}
+      />
       <section aria-labelledby="settings-heading" className="settings-section" data-native-keyboard>
-        <h2 id="settings-heading">设置</h2>
+        <h2 id="settings-heading">{t('settings')}</h2>
         <SettingSwitch
           buttonRef={controlsRef}
           checked={openTargetPanel}
-          label="切换时打开目标窗口侧栏"
+          label={t('openTargetPanel')}
           onCheckedChange={setOpenTargetPanel}
         />
         <AutoArchiveControl />
         <div className="appearance-setting-row">
-          <span>外观</span>
+          <span>{t('appearance')}</span>
           <AppearanceControl />
+        </div>
+        <div className="appearance-setting-row">
+          <span>{t('language')}</span>
+          <LanguageControl />
         </div>
       </section>
     </main>

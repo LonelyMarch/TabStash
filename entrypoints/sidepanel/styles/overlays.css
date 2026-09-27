@@ -73,7 +73,7 @@
 
 .appearance-menu-check {
   display: grid;
-  margin-left: auto;
+  margin-inline-start: auto;
   place-items: center;
 }
 
@@ -81,7 +81,7 @@
   position: absolute;
   z-index: 31;
   top: 36px;
-  right: 0;
+  inset-inline-end: 0;
   width: min(260px, calc(100vw - 24px));
   padding: 8px;
   border: 1px solid var(--panel-border);
