@@ -3,10 +3,15 @@ import {
   type Diagnostic,
   effectiveLocale,
   isLanguageMode,
+  locales,
   resolveLocale,
   translate,
   translateDiagnostic,
 } from '../../src/i18n/core';
+import { ar } from '../../src/i18n/locales/ar';
+import { es } from '../../src/i18n/locales/es';
+import { fr } from '../../src/i18n/locales/fr';
+import { ru } from '../../src/i18n/locales/ru';
 import { en, zhCN } from '../../src/i18n/messages';
 import { LANGUAGE_KEY, LanguageStore } from '../../src/infrastructure/storage/language';
 import type { StorageArea } from '../../src/infrastructure/storage/settings';
@@ -26,18 +31,23 @@ function memoryArea(): StorageArea {
 }
 
 describe('侧栏语言', () => {
-  it('自动模式按浏览器语言选择简体中文或英文，手动选择优先', () => {
+  it('自动模式识别六种官方语言及地区变体，手动选择优先', () => {
     expect(resolveLocale('zh-CN')).toBe('zh-CN');
     expect(resolveLocale('zh-Hans')).toBe('zh-CN');
     expect(resolveLocale('zh-SG')).toBe('zh-CN');
     expect(resolveLocale('zh-TW')).toBe('zh-CN');
     expect(resolveLocale('zh-HK')).toBe('zh-CN');
     expect(resolveLocale('en-US')).toBe('en');
-    expect(resolveLocale('fr-FR')).toBe('en');
+    expect(resolveLocale('ar-SA')).toBe('ar');
+    expect(resolveLocale('fr-FR')).toBe('fr');
+    expect(resolveLocale('ru-RU')).toBe('ru');
+    expect(resolveLocale('es-MX')).toBe('es');
+    expect(resolveLocale('de-DE')).toBe('en');
     expect(effectiveLocale('en', 'zh-CN')).toBe('en');
+    expect(effectiveLocale('ar', 'en-US')).toBe('ar');
     expect(effectiveLocale('zh-CN', 'en-US')).toBe('zh-CN');
-    expect(['auto', 'zh-CN', 'en'].every(isLanguageMode)).toBe(true);
-    expect(isLanguageMode('fr')).toBe(false);
+    expect(['auto', ...locales].every(isLanguageMode)).toBe(true);
+    expect(isLanguageMode('de')).toBe(false);
   });
 
   it('语言设置跨实例持久化；写入失败保留已确认的值', async () => {
@@ -53,14 +63,21 @@ describe('侧栏语言', () => {
     await expect(store.get()).rejects.toThrow('Invalid language setting');
   });
 
-  it('两个词表键与参数一致，未填参数不会静默消失', () => {
-    expect(Object.keys(en).sort()).toEqual(Object.keys(zhCN).sort());
+  it('六个词表键与参数一致，未填参数不会静默消失', () => {
+    const dictionaries = { en, ar, fr, ru, es };
+    for (const dictionary of Object.values(dictionaries)) {
+      expect(Object.keys(dictionary).sort()).toEqual(Object.keys(zhCN).sort());
+    }
     for (const key of Object.keys(zhCN) as (keyof typeof zhCN)[]) {
       const parameters = (value: string) =>
         [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
-      expect(parameters(en[key])).toEqual(parameters(zhCN[key]));
+      for (const dictionary of Object.values(dictionaries)) {
+        expect(parameters(dictionary[key])).toEqual(parameters(zhCN[key]));
+      }
     }
     expect(translate('en', 'window', { index: 2 })).toBe('Window 2');
+    expect(translate('fr', 'window', { index: 2 })).toBe('Fenêtre 2');
+    expect(translate('ar', 'window', { index: 2 })).toContain('2');
     expect(translate('zh-CN', 'window')).toContain('{index}');
   });
 

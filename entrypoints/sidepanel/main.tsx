@@ -39,7 +39,7 @@ async function mountSidePanel(): Promise<void> {
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
-  // 语言设置与外观一样在首次渲染前读取，避免英文/中文界面短暂闪烁。
+  // 语言设置与外观一样在首次渲染前读取，避免界面语言或文字方向短暂闪烁。
   let languageMode: LanguageMode = 'auto';
   let languageTimer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -54,7 +54,9 @@ async function mountSidePanel(): Promise<void> {
   } finally {
     if (languageTimer !== undefined) clearTimeout(languageTimer);
   }
-  document.documentElement.lang = effectiveLocale(languageMode, browser.i18n.getUILanguage());
+  const locale = effectiveLocale(languageMode, browser.i18n.getUILanguage());
+  document.documentElement.lang = locale;
+  document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
   createRoot(rootElement).render(
     <LanguageProvider initialMode={languageMode}>
       <App />

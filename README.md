@@ -19,7 +19,14 @@ TabStash 是面向 Microsoft Edge 和 Google Chrome 的侧栏扩展。它在一�
   <img src="./doc/screenshots/edge-dark.png" width="320" alt="Edge 深色模式下的 TabStash 窗口树与归档列表" />
 </p>
 
-<p align="center"><sub>Edge 浅色与深色界面。截图来自隔离浏览器中的自动化测试，使用本地测试页面。</sub></p>
+<p align="center"><sub>Edge 浅色与深色界面。</sub></p>
+
+<p align="center">
+  <img src="./doc/screenshots/edge-languages.png" width="320" alt="TabStash 语言菜单显示六种语言及自动选项" />
+  <img src="./doc/screenshots/edge-arabic.png" width="320" alt="阿拉伯语从右到左排列的 TabStash 侧栏" />
+</p>
+
+<p align="center"><sub>六种语言的选择菜单与阿拉伯语界面。所有截图均来自隔离浏览器和本地测试页面。</sub></p>
 
 ## 功能
 
@@ -28,6 +35,7 @@ TabStash 是面向 Microsoft Edge 和 Google Chrome 的侧栏扩展。它在一�
 - **归档管理**：查看、置顶、删除归档；恢复时可保留归档，或在窗口结构完整恢复后移除归档。
 - **网页进度**：尽力恢复普通网页的主页面与内层滚动位置、原生 HTML 音视频播放时间；恢复后不会自动播放媒体。
 - **侧栏外观与键盘操作**：Edge / Chrome 分别适配外观，支持自动、亮色和暗色模式，以及窗口树键盘导航。
+- **多语言界面**：支持阿拉伯语、简体中文、英语、法语、俄语和西班牙语；默认跟随浏览器语言，也可在侧栏底部手动切换。
 
 ## 快速开始
 
@@ -69,6 +77,8 @@ pnpm typecheck
 pnpm lint
 pnpm test
 ```
+
+更新 README 截图时，先构建 Edge 扩展，再运行 `pnpm capture:readme`；脚本只使用隔离浏览器配置和本地测试页面。
 
 如果 WXT 无法找到本机 Edge，可创建不提交的 `web-ext.config.ts`，通过 `binaries.edge` 指定浏览器可执行文件。该文件已列入 `.gitignore`。
 

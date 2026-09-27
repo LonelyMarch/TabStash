@@ -1,7 +1,7 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, Languages } from 'lucide-react';
 import { useState } from 'react';
-import { isLanguageMode, type LanguageMode } from '../../i18n/core';
+import { isLanguageMode, type LanguageMode, languageNames, locales } from '../../i18n/core';
 import { useLanguage } from '../../i18n/react';
 
 /** 语言菜单同时支持浏览器自动语言和显式覆盖，并在保存成功后更新界面。 */
@@ -11,8 +11,7 @@ export function LanguageControl() {
   const [error, setError] = useState(false);
   const labels: Record<LanguageMode, string> = {
     auto: t('autoLanguage'),
-    'zh-CN': t('chinese'),
-    en: t('english'),
+    ...languageNames,
   };
 
   /** @param nextMode 用户选择的语言；写入失败时继续使用已确认的选择。 */
@@ -61,7 +60,7 @@ export function LanguageControl() {
                 if (isLanguageMode(value)) void update(value);
               }}
             >
-              {(['auto', 'zh-CN', 'en'] as const).map((option) => (
+              {(['auto', ...locales] as const).map((option) => (
                 <DropdownMenu.RadioItem
                   className="appearance-menu-item"
                   disabled={busy}

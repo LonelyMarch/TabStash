@@ -1,8 +1,26 @@
+import { ar } from './locales/ar';
+import { es } from './locales/es';
+import { fr } from './locales/fr';
+import { ru } from './locales/ru';
 import { en, type MessageKey, zhCN } from './messages';
 
 /** 用户保存的语言模式；自动模式按浏览器界面语言解析。 */
-export type LanguageMode = 'auto' | 'zh-CN' | 'en';
-export type Locale = Exclude<LanguageMode, 'auto'>;
+export const locales = ['zh-CN', 'en', 'ar', 'fr', 'ru', 'es'] as const;
+export type Locale = (typeof locales)[number];
+export type LanguageMode = 'auto' | Locale;
+
+/** 语言菜单使用各语言的自称，切换界面语言后仍能识别选项。 */
+export const languageNames: Record<Locale, string> = {
+  'zh-CN': '简体中文',
+  en: 'English',
+  ar: 'العربية',
+  fr: 'Français',
+  ru: 'Русский',
+  es: 'Español',
+};
+
+/** 各语言共用稳定词条键，类型检查会阻止缺失的翻译进入构建。 */
+const messages: Record<Locale, Record<MessageKey, string>> = { 'zh-CN': zhCN, en, ar, fr, ru, es };
 
 /** 持久诊断只保存稳定键及原始参数，不在数据库中保存某种语言的句子。 */
 export interface Diagnostic {
@@ -12,21 +30,22 @@ export interface Diagnostic {
 
 /** @param value 未经信任的存储值。@returns 是否为有效语言模式。 */
 export function isLanguageMode(value: unknown): value is LanguageMode {
-  return value === 'auto' || value === 'zh-CN' || value === 'en';
+  return value === 'auto' || locales.some((locale) => locale === value);
 }
 
 /**
  * 根据浏览器界面语言选择扩展支持的显示语言。
  *
- * 目前所有 `zh` 开头的浏览器语言都兼容到简体中文；其余未提供词条的
- * 语言统一回退 English，确保自动模式始终有明确的显示语言。
+ * 所有 `zh` 开头的浏览器语言兼容到简体中文；其余按主语言代码匹配，
+ * 未提供词条的语言回退英语，确保自动模式始终有明确的显示语言。
  *
  * @param browserLanguage 浏览器界面语言，例如 `en-US` 或 `zh-CN`。
  * @returns TabStash 对应的显示语言。
  */
 export function resolveLocale(browserLanguage: string): Locale {
-  const normalized = browserLanguage.trim().toLowerCase();
-  return normalized.startsWith('zh') ? 'zh-CN' : 'en';
+  const primary = browserLanguage.trim().toLowerCase().split(/[-_]/)[0];
+  if (primary === 'zh') return 'zh-CN';
+  return locales.find((locale) => locale === primary) ?? 'en';
 }
 
 /** @param mode 用户选择。@param browserLanguage 浏览器界面语言。@returns 实际显示语言。 */
@@ -37,7 +56,7 @@ export function effectiveLocale(mode: LanguageMode, browserLanguage: string): Lo
 /**
  * 从词条键与命名参数生成当前语言的文本。
  * @param locale 实际显示语言。
- * @param key 中英文词条共用的稳定键。
+ * @param key 所有语言词条共用的稳定键。
  * @param params 数量、标题等不参与翻译的参数。
  */
 export function translate(
@@ -45,7 +64,7 @@ export function translate(
   key: MessageKey,
   params: Record<string, string | number> = {},
 ): string {
-  const template = locale === 'zh-CN' ? zhCN[key] : en[key];
+  const template = messages[locale][key];
   return template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`));
 }
 

@@ -109,6 +109,18 @@ button {
   background: var(--panel-surface);
 }
 
+/* Switch 的滑块使用绝对定位，阿拉伯语需要反转起点与移动方向。 */
+:root[dir="rtl"] .setting-switch-thumb {
+  left: auto;
+  right: 0;
+  margin-left: 0;
+  margin-right: 3px;
+}
+
+:root[dir="rtl"] .setting-switch[data-state="checked"] .setting-switch-thumb {
+  transform: translateX(-14px);
+}
+
 .section-heading {
   min-height: 30px;
   margin-bottom: 4px;

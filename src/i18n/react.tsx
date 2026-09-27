@@ -29,6 +29,8 @@ export function LanguageProvider({
 
   useEffect(() => {
     document.documentElement.lang = locale;
+    // 阿拉伯语同时切换文档方向，让侧栏布局和屏幕阅读器保持一致。
+    document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
   }, [locale]);
 
   useEffect(() => {

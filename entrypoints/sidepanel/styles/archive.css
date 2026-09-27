@@ -51,13 +51,14 @@ summary:focus-visible {
   gap: 0;
   min-height: 40px;
   cursor: pointer;
-  padding: 0 4px 0 0;
+  padding-block: 0;
+  padding-inline: 0 4px;
   border-radius: var(--panel-radius-small);
   list-style: none;
 }
 .archive-item > summary .window-copy,
 .archive-item > summary .tab-count {
-  margin-left: 7px;
+  margin-inline-start: 7px;
 }
 .archive-item > summary::-webkit-details-marker {
   display: none;
@@ -115,7 +116,7 @@ summary:focus-visible {
 .restore-controls {
   position: absolute;
   top: 4px;
-  right: 4px;
+  inset-inline-end: 4px;
 }
 .restore-buttons {
   gap: 2px;
@@ -151,7 +152,13 @@ summary:focus-visible {
   position: relative;
 }
 .archive-entry .archive-item > summary {
-  padding-right: 144px;
+  padding-inline-end: 144px;
+}
+
+/* 归档树的收起图标与实时窗口树保持相同的阅读方向。 */
+:root[dir="rtl"] .archive-chevron-closed,
+:root[dir="rtl"] .saved-group-chevron-closed {
+  transform: scaleX(-1);
 }
 
 .archive-feedback {

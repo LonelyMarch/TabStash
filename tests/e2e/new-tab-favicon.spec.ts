@@ -16,6 +16,8 @@ test('Edge 内部页面显示浏览器图标', async ({}) => {
     context = await chromium.launchPersistentContext(profile, {
       channel: 'msedge',
       headless: false,
+      // 固定测试界面语言，确保下方的中文外观菜单断言不依赖 CI 浏览器默认语言。
+      locale: 'zh-CN',
       viewport: { width: 390, height: 844 },
       args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
     });
