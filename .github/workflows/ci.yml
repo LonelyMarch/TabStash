@@ -47,6 +47,8 @@ jobs:
         if: always()
         with:
           name: browser-packages-and-test-results
+          # .output 是隐藏目录；仅允许下方列出的发布包、校验和及测试报告进入 CI 附件。
+          include-hidden-files: true
           path: |
             .output/*.zip
             .output/SHA256SUMS.txt
